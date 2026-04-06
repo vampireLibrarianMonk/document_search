@@ -1,0 +1,114 @@
+services:
+  # ── Frontend ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../../../frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── Backend API ───────────────────────────────────────────
+  api:
+    build:
+      context: ../../../backend
+    ports:
+      - "8000:8000"
+    env_file: local.env
+    volumes:
+      - api_data:/app/data
+      - ~/.aws:/root/.aws:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Worker (shared image, different entrypoint) ──────────
+  worker:
+    build:
+      context: ../../../backend
+    command: ["python", "-m", "app.worker"]
+    env_file: local.env
+    volumes:
+      - api_data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── OpenSearch ────────────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Postgres ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    env_file: local.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docsearch"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── MinIO (S3-compatible object storage) ──────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    env_file: local.env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Reverse Proxy (HTTPS profile only) ────────────────────
+  reverse-proxy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  opensearch_data:
+  postgres_data:
+  minio_data:
+  api_data:
+  caddy_data:
