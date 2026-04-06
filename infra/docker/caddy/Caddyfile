@@ -1,0 +1,34 @@
+{
+	auto_https off
+}
+
+# HTTP -> HTTPS redirect
+http://app.localhost, http://api.localhost {
+	redir https://{host}{uri} permanent
+}
+
+https://app.localhost {
+	tls /etc/caddy/certs/local-dev.pem /etc/caddy/certs/local-dev-key.pem
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	reverse_proxy frontend:80
+}
+
+https://api.localhost {
+	tls /etc/caddy/certs/local-dev.pem /etc/caddy/certs/local-dev-key.pem
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	reverse_proxy api:8000
+}

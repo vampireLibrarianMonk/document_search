@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+
+# Data
+backend/data/
+backend/backend/
+
+# Logs
+*.log
+
+# Environment
+.env
+
+# Certs
+infra/docker/certs/*.pem
