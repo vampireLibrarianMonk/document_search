@@ -10,10 +10,11 @@ You will need the following installed before you start:
 - Node.js 20 or newer (with npm)
 - Docker and Docker Compose (only needed if you want to run with containers)
 - mkcert (only needed if you want local HTTPS)
+- AWS credentials configured (`~/.aws/credentials`) with access to Amazon Bedrock (needed for AI answers)
 
 ## Option 1: Run Locally (No Containers)
 
-This is the quickest way to get up and running for development.
+This is the quickest way to get up and running for development. Note that OpenSearch, Postgres, and BookStack will not be available in this mode. The app will use in-memory storage and keyword search as a fallback.
 
 ### 1. Clone the repo and enter the directory
 
@@ -73,7 +74,7 @@ make dev-frontend
 
 ## Option 2: Run with Docker Compose (HTTP)
 
-This starts the full stack including OpenSearch, Postgres, and MinIO alongside the app.
+This starts the full stack including OpenSearch, Postgres, BookStack, and MinIO alongside the app.
 
 ### 1. Build and start everything
 
@@ -81,14 +82,16 @@ This starts the full stack including OpenSearch, Postgres, and MinIO alongside t
 make up
 ```
 
-That is it. Docker Compose will build the images and start all six services:
+Docker Compose will build the images and start all services:
 
 - Frontend (port 5173)
 - Backend API (port 8000)
 - Background worker
-- OpenSearch (port 9200)
-- Postgres (port 5432)
-- MinIO object storage (port 9000, console on 9001)
+- OpenSearch (port 9200) for full-text search
+- Postgres (port 5432) for persistent document storage
+- MinIO (port 9000, console on 9001) for object storage
+- BookStack (port 6875) for local document wiki
+- BookStack MySQL database
 
 ### 2. Check that everything is running
 
@@ -102,6 +105,7 @@ You should see all services listed as healthy or running.
 
 - Frontend: http://localhost:5173
 - Backend API docs: http://localhost:8000/docs
+- BookStack: http://localhost:6875 (login: `admin@admin.com` / `password`)
 
 ### 4. View logs
 
@@ -123,12 +127,14 @@ This adds a Caddy reverse proxy in front of the app so everything runs over HTTP
 
 Ubuntu/Debian:
 ```bash
-sudo apt install mkcert
+sudo apt install mkcert libnss3-tools
+mkcert -install
 ```
 
 macOS:
 ```bash
 brew install mkcert
+mkcert -install
 ```
 
 ### 2. Generate local certificates
@@ -145,13 +151,11 @@ This creates trusted certificates for `app.localhost` and `api.localhost` in `in
 make up-https
 ```
 
-This starts all the same services as Option 2 plus a Caddy reverse proxy that handles TLS termination.
-
 ### 4. Open the app
 
 - Frontend: https://app.localhost
 - Backend API docs: https://api.localhost/docs
-- Health check: https://api.localhost/health
+- BookStack: http://localhost:6875
 
 HTTP requests to `http://app.localhost` and `http://api.localhost` automatically redirect to HTTPS.
 
@@ -161,22 +165,107 @@ HTTP requests to `http://app.localhost` and `http://api.localhost` automatically
 make down
 ```
 
+## Setting Up BookStack
+
+BookStack is a local wiki that runs alongside the app. You can organize your documents there and sync them into the search system.
+
+### 1. Log in
+
+Open http://localhost:6875 and log in with `admin@admin.com` / `password`.
+
+### 2. Create an API token
+
+Go to your profile (top right) > "API Tokens" > "Create Token". Copy the Token ID and Token Secret.
+
+### 3. Add the token to the environment
+
+Edit `infra/docker/compose/local.env` and fill in:
+
+```
+BOOKSTACK_TOKEN_ID=your-token-id
+BOOKSTACK_TOKEN_SECRET=your-token-secret
+```
+
+Then restart the API: `docker compose -f infra/docker/compose/docker-compose.yml restart api`
+
+### 4. Organize your documents
+
+Create books and pages in BookStack, then attach your PDFs to the pages.
+
+### 5. Sync
+
+```bash
+curl -X POST http://localhost:8000/sources/bookstack/sync
+```
+
+This pulls all PDF attachments from BookStack and ingests them into the search system.
+
+## Setting Up Confluence Cloud (Optional)
+
+The Confluence connector is ready for when you want to move to Confluence Cloud.
+
+### 1. Sign up
+
+Go to https://www.atlassian.com/software/confluence and sign up for the free tier.
+
+### 2. Create a space and upload documents
+
+Create a space (e.g., key: `HOUSE`), create pages, and attach your PDFs.
+
+### 3. Generate an API token
+
+Go to https://id.atlassian.com/manage-profile/security/api-tokens and create a token.
+
+### 4. Add credentials to the environment
+
+Edit `infra/docker/compose/local.env`:
+
+```
+CONFLUENCE_URL=https://yoursite.atlassian.net
+CONFLUENCE_EMAIL=your@email.com
+CONFLUENCE_API_TOKEN=your-api-token
+```
+
+Restart the API, then sync:
+
+```bash
+curl -X POST http://localhost:8000/sources/confluence/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"space_keys": ["HOUSE"]}'
+```
+
 ## Environment Variables
 
-The backend reads from environment variables. A template is provided at `backend/.env.example`:
+The backend reads from environment variables. When running with Docker Compose, these are configured through `infra/docker/compose/local.env`:
 
 ```
-APP_ENV=dev
-APP_HOST=0.0.0.0
-APP_PORT=8000
+# App
+APP_ENV=container-local
 DATA_DIR=data
-```
 
-When running with Docker Compose, the container environment is configured through `infra/docker/compose/local.env` and you should not need to change anything for local development.
+# Postgres
+POSTGRES_USER=docsearch
+POSTGRES_PASSWORD=docsearch_local
+POSTGRES_DB=docsearch
+
+# OpenSearch
+OPENSEARCH_HOST=opensearch
+OPENSEARCH_PORT=9200
+
+# BookStack
+BOOKSTACK_URL=http://bookstack:80
+BOOKSTACK_TOKEN_ID=
+BOOKSTACK_TOKEN_SECRET=
+
+# Confluence (optional, for cloud)
+CONFLUENCE_URL=
+CONFLUENCE_EMAIL=
+CONFLUENCE_API_TOKEN=
+```
 
 ## Quick Verification
 
-Once the app is running (any option), you can verify it works with a quick curl. Swap the URLs for `https://api.localhost` if you are using Option 3.
+Once the app is running (any option), you can verify it works:
 
 ```bash
 # Check the API is up
@@ -190,6 +279,11 @@ curl -F "file=@/tmp/test.txt" http://localhost:8000/ingest/upload
 curl -X POST http://localhost:8000/search \
   -H 'Content-Type: application/json' \
   -d '{"query": "fence height", "mode": "hybrid", "filters": {}, "page": 1, "page_size": 10}'
+
+# Ask a question (requires AWS Bedrock access)
+curl -X POST http://localhost:8000/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "What are the rules about fences?"}'
 ```
 
 ## Project Structure
@@ -198,18 +292,24 @@ curl -X POST http://localhost:8000/search \
 document_search/
   backend/
     app/
-      __init__.py        # Package init
-      main.py            # FastAPI routes
-      schemas.py         # Request/response models
-      services.py        # Ingestion, search, and ask logic
-      storage.py         # In-memory document store
-      worker.py          # Background worker (placeholder)
+      __init__.py          # Package init
+      main.py              # FastAPI routes
+      schemas.py           # Request/response models
+      services.py          # Ingestion, search, and ask logic
+      classifier.py        # Auto-categorization of documents
+      db.py                # Postgres connection and schema
+      pg_store.py          # Postgres-backed document store
+      storage.py           # In-memory store (fallback)
+      search.py            # OpenSearch integration
+      bookstack.py         # BookStack API client
+      confluence.py        # Confluence Cloud API client
+      worker.py            # Background worker (placeholder)
     .env.example
     requirements-dev.txt
     Dockerfile
   frontend/
     src/
-      main.ts            # Vue app (search, upload, results UI)
+      main.ts              # Vue app (search, upload, results UI)
     index.html
     package.json
     tsconfig.json
@@ -219,12 +319,12 @@ document_search/
   infra/
     docker/
       caddy/
-        Caddyfile        # Reverse proxy config for HTTPS
+        Caddyfile          # Reverse proxy config for HTTPS
       certs/
-        generate.sh      # Certificate generation script
+        generate.sh        # Certificate generation script
       compose/
-        docker-compose.yml
-        local.env
+        docker-compose.yml # Full stack: app, OpenSearch, Postgres, BookStack, etc.
+        local.env          # Environment variables for all services
   Makefile
   README.md
   README-SETUP.md

@@ -91,6 +91,40 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── BookStack (local wiki for document management) ────────
+  bookstack:
+    image: lscr.io/linuxserver/bookstack:latest
+    ports:
+      - "6875:80"
+    environment:
+      - APP_URL=http://localhost:6875
+      - APP_KEY=base64:q2K1LFhI1MmiUwoANcJuUaCtGZtjlqaqEQHFoXNpfbk=
+      - DB_HOST=bookstack-db
+      - DB_PORT=3306
+      - DB_USERNAME=bookstack
+      - DB_PASSWORD=bookstack_local
+      - DB_DATABASE=bookstack
+    depends_on:
+      bookstack-db:
+        condition: service_healthy
+    volumes:
+      - bookstack_data:/config
+
+  bookstack-db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=bookstack_root
+      - MYSQL_DATABASE=bookstack
+      - MYSQL_USER=bookstack
+      - MYSQL_PASSWORD=bookstack_local
+    volumes:
+      - bookstack_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "bookstack", "-pbookstack_local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ── Reverse Proxy (HTTPS profile only) ────────────────────
   reverse-proxy:
     image: caddy:2-alpine
@@ -112,3 +146,5 @@ volumes:
   minio_data:
   api_data:
   caddy_data:
+  bookstack_data:
+  bookstack_db_data:
