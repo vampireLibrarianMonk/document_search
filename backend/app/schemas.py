@@ -1,7 +1,11 @@
+"""Pydantic models for API requests and responses."""
+
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+
+# -- Search --
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
@@ -28,10 +32,12 @@ class SearchResponse(BaseModel):
     timing_ms: int
 
 
+# -- Ask (RAG) --
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
     filters: dict[str, Any] = Field(default_factory=dict)
-    top_k: int = 5
+    top_k: int = 15
 
 
 class Citation(BaseModel):
@@ -48,10 +54,19 @@ class AskResponse(BaseModel):
     suggested_queries: list[str]
 
 
+# -- Ingestion --
+
 class UploadResponse(BaseModel):
     document_id: str
     job_id: str
 
+
+class BulkUploadResponse(BaseModel):
+    uploaded: list[UploadResponse]
+    errors: list[str]
+
+
+# -- Documents --
 
 class DocumentResponse(BaseModel):
     document_id: str
@@ -59,7 +74,8 @@ class DocumentResponse(BaseModel):
     source_type: str
     source_url: str
     document_type: str
-    tags: list[str]
+    category: str = "Uncategorized"
+    tags: list[str] = []
     status: str
 
 
@@ -78,11 +94,15 @@ class ChunkListResponse(BaseModel):
     chunks: list[ChunkRecord]
 
 
+# -- Confluence --
+
 class ConfluenceSyncRequest(BaseModel):
     space_keys: list[str] = Field(default_factory=list)
     full_sync: bool = False
     since: str | None = None
 
+
+# -- Jobs --
 
 class JobResponse(BaseModel):
     job_id: str

@@ -30,5 +30,7 @@ https://api.localhost {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	}
 
-	reverse_proxy api:8000
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
 }

@@ -1,1 +1,1 @@
-"""Backend application package for Phase 1 local MVP."""
+"""Backend application package for House Document Search."""
