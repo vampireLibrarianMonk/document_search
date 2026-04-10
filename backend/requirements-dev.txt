@@ -9,3 +9,4 @@ psycopg2-binary>=2.9.0
 opensearch-py>=2.4.0
 requests>=2.31.0
 pdf2image>=1.17.0
+pytest>=8.0.0

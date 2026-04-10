@@ -1,0 +1,51 @@
+@startuml data_model
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Postgres Data Model
+
+entity "documents" as doc {
+  * document_id : text <<PK>>
+  --
+  title : text
+  source_type : text
+  source_url : text
+  document_type : text
+  category : text
+  tags : text[]
+  status : text
+}
+
+entity "chunks" as chunk {
+  * chunk_id : text <<PK>>
+  --
+  * document_id : text <<FK>>
+  section_heading : text
+  content : text
+  source_type : text
+  document_type : text
+  tags : text[]
+}
+
+entity "jobs" as job {
+  * job_id : text <<PK>>
+  --
+  status : text
+  created_at : timestamp
+}
+
+entity "token_usage" as usage {
+  * id : serial <<PK>>
+  --
+  timestamp : timestamp
+  model_id : text
+  operation : text
+  input_tokens : integer
+  output_tokens : integer
+  estimated_cost_usd : double
+  document_id : text
+}
+
+doc ||--o{ chunk : "has many"
+doc .. usage : "optional ref"
+@enduml

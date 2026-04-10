@@ -1,0 +1,68 @@
+@startuml architecture
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title House Document Search - System Architecture
+
+actor "User" as user
+
+package "Frontend" {
+  [Vue 3 SPA\n(port 5173)] as frontend
+}
+
+package "Reverse Proxy" {
+  [Caddy\n(HTTPS :443)] as caddy
+}
+
+package "Backend" {
+  [FastAPI\n(port 8000)] as api
+  [Worker\n(background)] as worker
+}
+
+package "Storage" {
+  database "Postgres\n(port 5432)" as pg
+  database "OpenSearch\n(port 9200)" as os
+  storage "MinIO\n(port 9000)" as minio
+  storage "Disk Volume\n(uploads)" as disk
+}
+
+package "External Services" {
+  cloud "Amazon Bedrock\n(Converse API)" as bedrock
+  cloud "AWS Pricing\n(Bulk JSON)" as pricing
+}
+
+package "Document Sources" {
+  [BookStack\n(port 6875)] as bookstack
+  database "BookStack MySQL" as bsdb
+  cloud "Confluence Cloud\n(REST API)" as confluence
+}
+
+user --> caddy : HTTPS
+caddy --> frontend : proxy
+caddy --> api : proxy
+user --> frontend : HTTP :5173
+frontend --> api : REST API
+
+api --> pg : documents\nchunks\njobs\ntoken_usage
+api --> os : index & search\nchunks (BM25)
+api --> disk : save uploads
+api --> bedrock : Ask AI (Q&A)\nVision OCR
+api --> pricing : fetch model\npricing
+api --> bookstack : sync & push\ndocuments
+api --> confluence : sync\ndocuments
+bookstack --> bsdb
+
+note right of bedrock
+  Uses Converse API
+  (model-agnostic)
+  Tracks token usage
+  & estimated cost
+end note
+
+note right of os
+  English analyzer
+  for stemming
+  BM25 full-text search
+end note
+@enduml

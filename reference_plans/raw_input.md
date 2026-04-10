@@ -41,6 +41,7 @@ LLM layer:
 Amazon Bedrock for embeddings + response generation
 Optional Bedrock Knowledge Bases if you want managed chunking/embedding/retrieval instead of a fully custom RAG pipeline.
 Core product requirements
+
 1. Content intake
 
 The system must support:
@@ -64,8 +65,7 @@ Appraisal
 Insurance
 Repair / contractor
 Utility / property records
-Personal notes
-2. Search modes
+Personal notes 2. Search modes
 
 The system must support:
 
@@ -80,8 +80,7 @@ Example queries:
 “Find the termite inspection”
 “What fees increased before closing?”
 “Which docs mention flood risk?”
-“Show only HOA documents from 2026”
-3. Answering behavior
+“Show only HOA documents from 2026” 3. Answering behavior
 
 When the user asks a question, the system should:
 
@@ -103,8 +102,7 @@ Open the original Confluence page
 Open the original uploaded file
 Jump to matching sections/chunks
 Preview extracted text and metadata
-Download original files when authorized
-5. Continuous sync
+Download original files when authorized 5. Continuous sync
 
 The system should support:
 
@@ -168,6 +166,7 @@ per-document authorization
 source-level authorization
 audit logging
 Data pipeline requirements
+
 1. Confluence connector
 
 The system should use Confluence REST APIs to:
@@ -190,8 +189,7 @@ attachment_name
 version
 last_modified
 author
-permissions snapshot if available
-2. Parsing and normalization
+permissions snapshot if available 2. Parsing and normalization
 
 The system should:
 
@@ -216,8 +214,7 @@ loan_number redacted if needed
 created_at
 updated_at
 tags
-acl
-3. Embeddings
+acl 3. Embeddings
 
 The system should create embeddings for each chunk using a Bedrock-supported embedding model. Bedrock Knowledge Bases documentation lists supported embedding models and regions, so final model choice should be pinned to the deployment region you pick.
 
@@ -482,33 +479,33 @@ trust that unauthorized documents are never surfaced
 re-sync Confluence changes without full rebuild
 Recommended folder structure
 house-doc-search/
-  frontend/
-    src/
-      pages/
-      components/
-      composables/
-      services/
-      router/
-  backend/
-    app/
-      api/
-      services/
-      models/
-      repositories/
-      workers/
-      ingestion/
-        parsers/
-        chunkers/
-        embeddings/
-        indexers/
-      rag/
-      auth/
-      settings/
-  infra/
-    terraform_or_cdk/
-  docs/
-    requirements/
-    api/
+frontend/
+src/
+pages/
+components/
+composables/
+services/
+router/
+backend/
+app/
+api/
+services/
+models/
+repositories/
+workers/
+ingestion/
+parsers/
+chunkers/
+embeddings/
+indexers/
+rag/
+auth/
+settings/
+infra/
+terraform_or_cdk/
+docs/
+requirements/
+api/
 My recommendation
 
 Use this architecture:

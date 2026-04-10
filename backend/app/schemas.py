@@ -4,8 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # -- Search --
+
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
@@ -34,6 +34,7 @@ class SearchResponse(BaseModel):
 
 # -- Ask (RAG) --
 
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
     filters: dict[str, Any] = Field(default_factory=dict)
@@ -56,6 +57,7 @@ class AskResponse(BaseModel):
 
 # -- Ingestion --
 
+
 class UploadResponse(BaseModel):
     document_id: str
     job_id: str
@@ -67,6 +69,7 @@ class BulkUploadResponse(BaseModel):
 
 
 # -- Documents --
+
 
 class DocumentResponse(BaseModel):
     document_id: str
@@ -96,6 +99,7 @@ class ChunkListResponse(BaseModel):
 
 # -- Confluence --
 
+
 class ConfluenceSyncRequest(BaseModel):
     space_keys: list[str] = Field(default_factory=list)
     full_sync: bool = False
@@ -103,6 +107,7 @@ class ConfluenceSyncRequest(BaseModel):
 
 
 # -- Jobs --
+
 
 class JobResponse(BaseModel):
     job_id: str

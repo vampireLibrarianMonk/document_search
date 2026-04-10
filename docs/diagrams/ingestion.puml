@@ -1,0 +1,55 @@
+@startuml ingestion
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Document Ingestion Pipeline
+
+start
+
+:User uploads file(s)\n(UI or API);
+
+:Validate file type\n(.pdf, .docx, .txt, .md);
+
+if (Supported?) then (yes)
+else (no)
+  :Return 400 error;
+  stop
+endif
+
+:Save raw file to disk;
+
+:Extract text per page;
+
+partition "Per-Page Extraction" {
+  if (Page has text >= 20 chars?) then (yes)
+    if (Page also has images?) then (yes)
+      :Extract text (pypdf)\n**FREE, instant**;
+      :Send page image to\nVision LLM (Converse API)\n**~$0.002/page**;
+      :Merge text + image content;
+    else (no)
+      :Extract text (pypdf)\n**FREE, instant**;
+    endif
+  else (no)
+    :Send page image to\nVision LLM (Converse API)\n**~$0.002/page**;
+  endif
+}
+
+:Chunk text\n(1000 chars, 200 overlap\nsentence boundaries);
+
+:Auto-classify document\n(rule-based, FREE);
+
+:Store in Postgres\n(metadata + chunks);
+
+:Index in OpenSearch\n(BM25 full-text);
+
+:Push to BookStack\n(organized by category);
+
+if (TRACK_USAGE=true?) then (yes)
+  :Log token usage\n& estimated cost\nto Postgres;
+else (no)
+endif
+
+:Return document_id;
+
+stop
+@enduml

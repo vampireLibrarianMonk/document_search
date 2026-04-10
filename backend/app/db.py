@@ -6,8 +6,8 @@ lives here so it survives container restarts.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 
 import psycopg2
 import psycopg2.extras
@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL DEFAULT 'queued',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    model_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    document_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_usage_ts ON token_usage(timestamp);
 """
 
 
