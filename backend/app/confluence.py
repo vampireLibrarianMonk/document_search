@@ -38,10 +38,14 @@ class ConfluenceClient:
         pages = []
         start = 0
         while True:
-            resp = self._get(f"/space/{space_key}/content/page", params={
-                "start": start, "limit": 50,
-                "expand": "children.attachment",
-            })
+            resp = self._get(
+                f"/space/{space_key}/content/page",
+                params={
+                    "start": start,
+                    "limit": 50,
+                    "expand": "children.attachment",
+                },
+            )
             data = resp.json()
             results = data.get("results", [])
             if not results:
@@ -71,8 +75,13 @@ class ConfluenceClient:
 
     def find_page_by_title(self, space_key: str, title: str) -> dict | None:
         """Find a page by title in a space."""
-        resp = self._get("/content", params={
-            "spaceKey": space_key, "title": title, "limit": 1,
-        })
+        resp = self._get(
+            "/content",
+            params={
+                "spaceKey": space_key,
+                "title": title,
+                "limit": 1,
+            },
+        )
         results = resp.json().get("results", [])
         return results[0] if results else None

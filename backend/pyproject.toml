@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.flake8]
+max-line-length = 160
+extend-ignore = ["E203", "W503"]

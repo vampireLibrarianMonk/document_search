@@ -1,4 +1,4 @@
-COMPOSE := docker compose -f infra/docker/compose/docker-compose.yml
+nCOMPOSE := docker compose -f infra/docker/compose/docker-compose.yml
 
 .PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs
 
@@ -34,3 +34,16 @@ certs:
 
 up-https:
 	$(COMPOSE) --profile https up --build -d
+
+# ── Testing ─────────────────────────────────────────────────
+test:
+	cd backend && python -m pytest tests/ -v --ignore=tests/test_integration.py
+
+test-integration:
+	cd backend && python -m pytest tests/test_integration.py -v
+
+test-all:
+	cd backend && python -m pytest tests/ -v
+
+test-coverage:
+	cd backend && python -m pytest tests/ -v --cov=app --cov-report=term-missing

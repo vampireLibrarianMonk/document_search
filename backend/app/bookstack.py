@@ -80,6 +80,7 @@ class BookStackClient:
         # If it's a file attachment, content is base64 encoded
         if data.get("external") is False or data.get("extension"):
             import base64
+
             return name, BytesIO(base64.b64decode(content))
 
         # Otherwise it's a link, not a file
@@ -88,11 +89,7 @@ class BookStackClient:
     def get_all_pdf_attachments(self) -> list[dict]:
         """Get all attachments that look like PDFs."""
         attachments = self._get("/attachments")["data"]
-        return [
-            a for a in attachments
-            if a.get("name", "").lower().endswith(".pdf")
-            or a.get("extension", "").lower() == "pdf"
-        ]
+        return [a for a in attachments if a.get("name", "").lower().endswith(".pdf") or a.get("extension", "").lower() == "pdf"]
 
     # -- Create / Write --
 
@@ -120,11 +117,14 @@ class BookStackClient:
         for page in self.list_pages(book_id):
             if page["name"].lower() == title.lower():
                 return page["id"]
-        result = self._post("/pages", json={
-            "book_id": book_id,
-            "name": title,
-            "html": f"<p>Documents filed under: {title}</p>",
-        })
+        result = self._post(
+            "/pages",
+            json={
+                "book_id": book_id,
+                "name": title,
+                "html": f"<p>Documents filed under: {title}</p>",
+            },
+        )
         logger.info("Created BookStack page: %s (id=%d)", title, result["id"])
         return result["id"]
 

@@ -56,12 +56,14 @@ make dev-all
 Or start them separately in two terminals:
 
 Terminal 1 (backend):
+
 ```bash
 source .venv/bin/activate
 make dev-backend
 ```
 
 Terminal 2 (frontend):
+
 ```bash
 make dev-frontend
 ```
@@ -126,12 +128,14 @@ This adds a Caddy reverse proxy in front of the app so everything runs over HTTP
 ### 1. Install mkcert
 
 Ubuntu/Debian:
+
 ```bash
 sudo apt install mkcert libnss3-tools
 mkcert -install
 ```
 
 macOS:
+
 ```bash
 brew install mkcert
 mkcert -install
@@ -293,23 +297,34 @@ document_search/
   backend/
     app/
       __init__.py          # Package init
-      main.py              # FastAPI routes
-      schemas.py           # Request/response models
-      services.py          # Ingestion, search, and ask logic
-      classifier.py        # Auto-categorization of documents
-      db.py                # Postgres connection and schema
-      pg_store.py          # Postgres-backed document store
-      storage.py           # In-memory store (fallback)
-      search.py            # OpenSearch integration
-      bookstack.py         # BookStack API client
+      main.py              # FastAPI routes, settings, health checks
+      schemas.py           # Request/response models (Pydantic)
+      services.py          # Ingestion pipeline, search, and AI Q&A
+      extraction.py        # Text extraction (PDF/DOCX/TXT) with vision OCR
+      classifier.py        # Auto-categorization of documents by content
+      pricing.py           # Live Bedrock pricing from AWS bulk JSON
+      db.py                # Postgres connection and schema setup
+      pg_store.py          # Postgres-backed document/chunk/usage store
+      search.py            # OpenSearch indexing and BM25 search
+      bookstack.py         # BookStack API client (local wiki)
       confluence.py        # Confluence Cloud API client
       worker.py            # Background worker (placeholder)
+    tests/
+      test_classifier.py   # Document classification (13 tests)
+      test_extraction.py   # Text extraction and chunking (16 tests)
+      test_schemas.py      # API schema validation (5 tests)
+      test_services.py     # Business logic, search, ask (19 tests)
+      test_bookstack.py    # BookStack client (8 tests)
+      test_confluence.py   # Confluence client (7 tests)
+      test_api.py          # API routes with mocked store (14 tests)
+      test_integration.py  # Full stack HTTP + HTTPS (37 tests)
+    pyproject.toml         # pytest and tool configuration
     .env.example
     requirements-dev.txt
     Dockerfile
   frontend/
     src/
-      main.ts              # Vue app (search, upload, results UI)
+      main.ts              # Vue app (search, upload, settings, results)
     index.html
     package.json
     tsconfig.json
@@ -319,13 +334,59 @@ document_search/
   infra/
     docker/
       caddy/
-        Caddyfile          # Reverse proxy config for HTTPS
+        Caddyfile          # Reverse proxy with TLS and security headers
       certs/
-        generate.sh        # Certificate generation script
+        generate.sh        # mkcert certificate generation
       compose/
-        docker-compose.yml # Full stack: app, OpenSearch, Postgres, BookStack, etc.
-        local.env          # Environment variables for all services
+        docker-compose.yml # All services: app, OpenSearch, Postgres, BookStack
+        local.env          # Environment variables (models, credentials, etc.)
+  docs/
+    diagrams/
+      architecture.puml    # System architecture (PlantUML source)
+      architecture.png     # System architecture (rendered)
+      ingestion.puml       # Ingestion pipeline (PlantUML source)
+      ingestion.png        # Ingestion pipeline (rendered)
+      search_ask.puml      # Search and Ask flow (PlantUML source)
+      search_ask.png       # Search and Ask flow (rendered)
+      data_model.puml      # Postgres schema (PlantUML source)
+      data_model.png       # Postgres schema (rendered)
+      containers.puml      # Docker services (PlantUML source)
+      containers.png       # Docker services (rendered)
   Makefile
+  .pre-commit-config.yaml  # 17 hooks: black, isort, flake8, bandit, etc.
+  .secrets.baseline        # detect-secrets baseline
   README.md
   README-SETUP.md
+```
+
+## Running Tests
+
+Unit tests run without any containers:
+
+```bash
+source .venv/bin/activate
+make test
+```
+
+Integration tests need the Docker Compose stack running:
+
+```bash
+make up-https
+make test-integration
+```
+
+Run everything:
+
+```bash
+make test-all
+```
+
+Coverage report:
+
+```bash
+make test-coverage
+```
+
+```
+
 ```

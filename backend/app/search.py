@@ -26,21 +26,23 @@ _MAPPING = {
             "document_id": {"type": "keyword"},
             "title": {"type": "text"},
             "section_heading": {"type": "text"},
-            "content": {"type": "text", "analyzer": "standard"},
+            "content": {"type": "text", "analyzer": "english"},
             "source_type": {"type": "keyword"},
             "document_type": {"type": "keyword"},
             "tags": {"type": "keyword"},
-        }
+        },
     },
 }
 
 
 def get_client() -> OpenSearch:
     return OpenSearch(
-        hosts=[{
-            "host": os.getenv("OPENSEARCH_HOST", "localhost"),
-            "port": int(os.getenv("OPENSEARCH_PORT", "9200")),
-        }],
+        hosts=[
+            {
+                "host": os.getenv("OPENSEARCH_HOST", "localhost"),
+                "port": int(os.getenv("OPENSEARCH_PORT", "9200")),
+            },
+        ],
         use_ssl=False,
         verify_certs=False,
     )
@@ -89,16 +91,24 @@ def index_chunks(document_id: str, title: str, chunks: list[dict]):
     logger.info("Indexed %d chunks for %s", len(actions), document_id)
 
 
-def search_chunks(query: str, filters: dict | None = None,
-                  page: int = 1, page_size: int = 10) -> dict:
+def search_chunks(
+    query: str,
+    filters: dict | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> dict:
     """Full-text search over chunks using OpenSearch BM25."""
     client = get_client()
 
-    must = [{"multi_match": {
-        "query": query,
-        "fields": ["content^3", "title", "section_heading"],
-        "type": "best_fields",
-    }}]
+    must = [
+        {
+            "multi_match": {
+                "query": query,
+                "fields": ["content^3", "title", "section_heading"],
+                "type": "best_fields",
+            },
+        },
+    ]
 
     filter_clauses = []
     if filters:
@@ -113,7 +123,7 @@ def search_chunks(query: str, filters: dict | None = None,
             "bool": {
                 "must": must,
                 "filter": filter_clauses,
-            }
+            },
         },
         "from": (page - 1) * page_size,
         "size": page_size,
@@ -132,15 +142,17 @@ def search_chunks(query: str, filters: dict | None = None,
         if "highlight" in hit and "content" in hit["highlight"]:
             snippet = hit["highlight"]["content"][0]
 
-        results.append({
-            "document_id": src["document_id"],
-            "chunk_id": src["chunk_id"],
-            "title": src["title"],
-            "snippet": snippet,
-            "score": round(hit["_score"], 4),
-            "source_type": src["source_type"],
-            "document_type": src["document_type"],
-        })
+        results.append(
+            {
+                "document_id": src["document_id"],
+                "chunk_id": src["chunk_id"],
+                "title": src["title"],
+                "snippet": snippet,
+                "score": round(hit["_score"], 4),
+                "source_type": src["source_type"],
+                "document_type": src["document_type"],
+            },
+        )
 
     # Facet aggregation
     agg_body = {
@@ -154,10 +166,7 @@ def search_chunks(query: str, filters: dict | None = None,
     agg_resp = client.search(index=INDEX_NAME, body=agg_body)
     facets = {}
     for agg_name in ("document_type", "source_type"):
-        facets[agg_name] = {
-            b["key"]: b["doc_count"]
-            for b in agg_resp["aggregations"][agg_name]["buckets"]
-        }
+        facets[agg_name] = {b["key"]: b["doc_count"] for b in agg_resp["aggregations"][agg_name]["buckets"]}
 
     return {
         "results": results,

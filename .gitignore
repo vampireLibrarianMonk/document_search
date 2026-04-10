@@ -9,6 +9,7 @@ dist/
 
 # IDE
 .idea/
+.kiro/
 
 # Data
 backend/data/

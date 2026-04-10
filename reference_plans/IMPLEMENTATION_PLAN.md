@@ -15,6 +15,7 @@ This plan is structured so each stage is production-aligned, testable, and build
 ## 2) Scope Summary from Raw Input
 
 ### Product Objective
+
 Build a house-document search system that supports:
 
 - Upload + Confluence ingest
@@ -95,6 +96,7 @@ house-doc-search/
 ## 5) Stage 1 — Locally Hosted (HTTP-first)
 
 ## Objective
+
 Run frontend + backend locally on developer machine, integrated with local OpenSearch, with core APIs and MVP workflows functional.
 
 ## Deliverables
@@ -204,6 +206,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
 ## 6) Stage 2 — Containerized Locally (Docker)
 
 ## Objective
+
 Package all local services in Docker and run with one command, preserving Stage 1 behavior.
 
 ## Deliverables
@@ -275,6 +278,7 @@ docker compose -f infra/docker/compose/docker-compose.yml logs -f api
 ## 7) Stage 3 — Upgrade to Local HTTPS
 
 ## Objective
+
 Serve frontend and API securely over HTTPS in local development to mirror production security posture.
 
 ## Deliverables
@@ -455,12 +459,15 @@ For each endpoint:
 ## 13) Risks and Mitigations
 
 1. **Confluence API variability/rate limits**
+
    - Mitigation: incremental cursoring, retry/backoff, sync checkpoints
 
 2. **Embedding/LLM cost and latency**
+
    - Mitigation: batching, caching, top-k caps, observability metrics
 
 3. **Hybrid relevance quality**
+
    - Mitigation: tune score weights, rerank strategy, query analytics
 
 4. **Local HTTPS complexity**

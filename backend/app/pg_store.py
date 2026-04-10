@@ -55,8 +55,16 @@ class PgStore:
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (document_id) DO UPDATE SET
                          title=EXCLUDED.title, category=EXCLUDED.category, tags=EXCLUDED.tags, status=EXCLUDED.status""",
-                    (doc.document_id, doc.title, doc.source_type, doc.source_url,
-                     doc.document_type, doc.category, doc.tags, doc.status),
+                    (
+                        doc.document_id,
+                        doc.title,
+                        doc.source_type,
+                        doc.source_url,
+                        doc.document_type,
+                        doc.category,
+                        doc.tags,
+                        doc.status,
+                    ),
                 )
         finally:
             conn.close()
@@ -93,8 +101,15 @@ class PgStore:
                         """INSERT INTO chunks (chunk_id, document_id, section_heading, content,
                                               source_type, document_type, tags)
                            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                        (c.chunk_id, c.document_id, c.section_heading, c.content,
-                         c.source_type, c.document_type, c.tags),
+                        (
+                            c.chunk_id,
+                            c.document_id,
+                            c.section_heading,
+                            c.content,
+                            c.source_type,
+                            c.document_type,
+                            c.tags,
+                        ),
                     )
         finally:
             conn.close()
@@ -113,24 +128,33 @@ class PgStore:
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT d.document_id as d_document_id, d.title, d.source_type as d_source_type,
                            d.source_url, d.document_type as d_document_type, d.tags as d_tags, d.status,
                            c.chunk_id, c.document_id, c.section_heading, c.content,
                            c.source_type, c.document_type, c.tags
                     FROM chunks c JOIN documents d ON c.document_id = d.document_id
-                """)
+                """,
+                )
                 results = []
                 for r in cur.fetchall():
                     doc = DocumentResponse(
-                        document_id=r["d_document_id"], title=r["title"],
-                        source_type=r["d_source_type"], source_url=r["source_url"],
-                        document_type=r["d_document_type"], tags=r["d_tags"], status=r["status"],
+                        document_id=r["d_document_id"],
+                        title=r["title"],
+                        source_type=r["d_source_type"],
+                        source_url=r["source_url"],
+                        document_type=r["d_document_type"],
+                        tags=r["d_tags"],
+                        status=r["status"],
                     )
                     chunk = ChunkRecord(
-                        chunk_id=r["chunk_id"], document_id=r["document_id"],
-                        section_heading=r["section_heading"], content=r["content"],
-                        source_type=r["source_type"], document_type=r["document_type"],
+                        chunk_id=r["chunk_id"],
+                        document_id=r["document_id"],
+                        section_heading=r["section_heading"],
+                        content=r["content"],
+                        source_type=r["source_type"],
+                        document_type=r["document_type"],
                         tags=r["tags"],
                     )
                     results.append((doc, chunk))
@@ -167,5 +191,70 @@ class PgStore:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("SELECT job_id, status FROM jobs ORDER BY created_at DESC LIMIT 100")
                 return [JobResponse(**r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    # -- Token usage tracking --
+
+    def log_usage(
+        self,
+        model_id: str,
+        operation: str,
+        input_tokens: int,
+        output_tokens: int,
+        estimated_cost_usd: float,
+        document_id: str | None = None,
+    ) -> None:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO token_usage
+                       (model_id, operation, input_tokens, output_tokens,
+                        estimated_cost_usd, document_id)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (model_id, operation, input_tokens, output_tokens,
+                     estimated_cost_usd, document_id),
+                )
+        finally:
+            conn.close()
+
+    def get_usage_summary(self) -> dict:
+        conn = get_conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """SELECT COALESCE(SUM(input_tokens), 0) as total_input,
+                              COALESCE(SUM(output_tokens), 0) as total_output,
+                              COALESCE(SUM(estimated_cost_usd), 0) as total_cost,
+                              COUNT(*) as total_calls
+                       FROM token_usage""",
+                )
+                totals = dict(cur.fetchone())
+
+                cur.execute(
+                    """SELECT model_id,
+                              SUM(input_tokens) as input_tokens,
+                              SUM(output_tokens) as output_tokens,
+                              SUM(estimated_cost_usd) as cost,
+                              COUNT(*) as calls
+                       FROM token_usage
+                       GROUP BY model_id ORDER BY cost DESC""",
+                )
+                by_model = [dict(r) for r in cur.fetchall()]
+
+                cur.execute(
+                    """SELECT DATE(timestamp) as day,
+                              SUM(input_tokens) as input_tokens,
+                              SUM(output_tokens) as output_tokens,
+                              SUM(estimated_cost_usd) as cost,
+                              COUNT(*) as calls
+                       FROM token_usage
+                       WHERE timestamp > NOW() - INTERVAL '30 days'
+                       GROUP BY DATE(timestamp) ORDER BY day DESC""",
+                )
+                by_day = [dict(r) for r in cur.fetchall()]
+
+                return {"totals": totals, "by_model": by_model, "by_day": by_day}
         finally:
             conn.close()

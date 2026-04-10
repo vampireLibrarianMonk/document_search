@@ -1,0 +1,46 @@
+@startuml containers
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Docker Compose Services
+
+node "docker-compose" {
+
+  package "Application" {
+    [frontend\nVue 3 + Nginx\n:5173] as fe
+    [api\nFastAPI + Uvicorn\n:8000] as api
+    [worker\nBackground jobs] as wk
+  }
+
+  package "Data Stores" {
+    database "postgres\nPostgreSQL 16\n:5432" as pg
+    database "opensearch\nOpenSearch 2.19\n:9200" as os
+    storage "minio\nS3-compatible\n:9000/:9001" as minio
+  }
+
+  package "Document Wiki" {
+    [bookstack\nBookStack v26\n:6875] as bs
+    database "bookstack-db\nMySQL 8.0" as bsdb
+  }
+
+  package "HTTPS (profile)" {
+    [reverse-proxy\nCaddy 2\n:80/:443] as caddy
+  }
+}
+
+fe --> api : REST
+api --> pg
+api --> os
+api --> minio
+api --> bs
+wk --> api
+bs --> bsdb
+caddy --> fe : app.localhost
+caddy --> api : api.localhost
+
+note bottom of caddy
+  Only started with
+  --profile https
+  (make up-https)
+end note
+@enduml
