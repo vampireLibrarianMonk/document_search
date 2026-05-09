@@ -350,6 +350,58 @@ def generate_document(body: dict):
     return {"markdown": markdown_content, "format": fmt}
 
 
+@app.post("/generate/detect-format")
+def generate_detect_format(body: dict):
+    """Use a cheap LLM call to detect the best output format for a prompt."""
+    import boto3
+
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        return {"format": "md", "reason": "no prompt"}
+
+    model_id = os.getenv(
+        "BEDROCK_DETECT_MODEL_ID",
+        os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"),
+    )
+
+    client = boto3.client(
+        "bedrock-runtime",
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+    )
+
+    try:
+        resp = client.converse(
+            modelId=model_id,
+            system=[{"text": (
+                "You detect the best output format for a document request. "
+                "Reply with EXACTLY this format: FORMAT|REASON\n"
+                "FORMAT must be one of: md, docx, pdf, png, pptx\n"
+                "REASON is 2-4 words explaining why.\n\n"
+                "Examples:\n"
+                "- 'Write a letter to my HOA' → docx|formal letter\n"
+                "- 'Create a presentation about rules' → pptx|slide deck\n"
+                "- 'Fill out the modification form' → docx|fillable form\n"
+                "- 'Make a quick reference card' → png|visual reference\n"
+                "- 'Generate a report with all fees' → pdf|formal report\n"
+                "- 'Summarize the bylaws' → md|text summary"
+            )}],
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": 20},
+        )
+        result = resp["output"]["message"]["content"][0]["text"].strip()
+        parts = result.split("|", 1)
+        fmt = parts[0].strip().lower()
+        reason = parts[1].strip() if len(parts) > 1 else "detected"
+
+        if fmt not in ("md", "docx", "pdf", "png", "pptx"):
+            fmt = "md"
+            reason = "general content"
+
+        return {"format": fmt, "reason": reason}
+    except Exception:
+        return {"format": "md", "reason": "detection unavailable"}
+
+
 @app.post("/generate/convert")
 def generate_convert(body: dict):
     """Convert previously generated markdown to a different format (no Bedrock call)."""
@@ -740,10 +792,12 @@ def admin_get_config():
     qa_model = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", qa_model)
+    detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", qa_model)
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
         "BEDROCK_GENERATE_MODEL_ID": gen_model,
+        "BEDROCK_DETECT_MODEL_ID": detect_model,
         "BEDROCK_VISION_MODEL_ID": vision_model,
         "OPENSEARCH_HOST": os.getenv("OPENSEARCH_HOST", "localhost"),
         "OPENSEARCH_PORT": os.getenv("OPENSEARCH_PORT", "9200"),
@@ -764,6 +818,7 @@ def admin_update_config(updates: dict):
         "AWS_REGION",
         "BEDROCK_MODEL_ID",
         "BEDROCK_GENERATE_MODEL_ID",
+        "BEDROCK_DETECT_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",
         "BOOKSTACK_URL",
         "BOOKSTACK_TOKEN_ID",

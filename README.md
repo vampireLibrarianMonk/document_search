@@ -92,6 +92,41 @@ When you are ready to move to Confluence Cloud, the connector is built and ready
 - Plain text (.txt)
 - Markdown (.md)
 
+## Creating Documents
+
+Click the "Create" tab to generate new documents from your indexed content.
+
+1. Type what you want to create (e.g., "Fill out an exterior modification application for a roof replacement")
+2. Optionally select specific source documents, or let the app auto-search for relevant content
+3. Pick an output format and click Generate
+4. Preview the content, then Download in your chosen format
+
+### Output Formats
+
+| Format | What you get |
+|--------|-------------|
+| Markdown (.md) | Clean text with headings and bullets |
+| Word (.docx) | Styled document with Calibri font, proper headings, bullet points, and form fields |
+| PDF (.pdf) | Formatted report suitable for printing or sharing |
+| Image (.png) | Single-page visual reference card |
+| PowerPoint (.pptx) | Presentation with navy/white theme, title slide, content slides with bullets |
+
+### How It Works
+
+- The app searches your indexed documents for relevant content
+- Sends that content plus your request to the selected generation model (configurable in Settings)
+- Bedrock writes the document grounded in your actual house documents
+- The markdown is converted to your chosen format locally (no additional API calls)
+- Form requests are auto-detected and generate proper form fields with blanks, checkboxes, and signature lines
+
+### Model Selection
+
+Three separate models can be configured in Settings:
+
+- **Ask AI Model** - For quick Q&A answers (use a cheap/fast model)
+- **Create Document Model** - For document generation (use a balanced/quality model for better output)
+- **Vision OCR Model** - For reading scanned pages
+
 ## Running the App
 
 There are three ways to run it: locally without containers, with Docker Compose over HTTP, or with Docker Compose over HTTPS. See [README-SETUP.md](README-SETUP.md) for full setup instructions.
@@ -137,6 +172,8 @@ Key endpoints:
 - `POST /ingest/upload-stream` - Upload multiple files with live progress (SSE)
 - `POST /search` - Search documents
 - `POST /ask` - Ask a question and get an AI answer with citations
+- `POST /generate` - Generate a document from a prompt (returns markdown)
+- `POST /generate/convert` - Convert markdown to DOCX, PDF, PNG, or PPTX
 - `GET /documents` - List all documents
 - `GET /documents/{id}` - Get a single document
 - `GET /documents/{id}/chunks` - Get a document's text chunks

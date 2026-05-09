@@ -321,6 +321,7 @@ document_search/
       bookstack.py         # BookStack API client (local wiki)
       confluence.py        # Confluence Cloud API client
       worker.py            # Background worker (placeholder)
+      generator.py         # Document generation and format conversion
     tests/
       test_classifier.py   # Document classification (13 tests)
       test_extraction.py   # Text extraction and chunking (16 tests)

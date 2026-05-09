@@ -100,6 +100,10 @@ const state = reactive({
   generateDone: false,
   generateDownloading: false,
   generateHistory: [] as Array<{ prompt: string; markdown: string; timestamp: string }>,
+  detectedFormat: "" as string,
+  detectedReason: "" as string,
+  detectedAccepted: null as boolean | null,
+  detectingFormat: false,
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -206,6 +210,38 @@ async function loadHealthCheck() {
   }
 }
 
+let _detectTimer: any = null;
+
+function onPromptInput(val: string) {
+  state.generatePrompt = val;
+  state.detectedAccepted = null;
+  // Debounce: detect format 800ms after user stops typing
+  clearTimeout(_detectTimer);
+  if (val.trim().length > 10) {
+    _detectTimer = setTimeout(detectFormat, 800);
+  }
+}
+
+async function detectFormat() {
+  if (!state.generatePrompt.trim()) return;
+  state.detectingFormat = true;
+  try {
+    const resp = await fetch(`${apiBase}/generate/detect-format`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: state.generatePrompt }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      state.detectedFormat = data.format;
+      state.detectedReason = data.reason;
+      state.detectedAccepted = true;
+      state.generateFormat = data.format;
+    }
+  } catch { /* ignore */ }
+  finally { state.detectingFormat = false; }
+}
+
 async function generateDoc() {
   if (!state.generatePrompt.trim()) return;
   state.generateLoading = true;
@@ -235,6 +271,7 @@ async function generateDoc() {
     state.generateHistory.unshift({
       prompt: state.generatePrompt,
       markdown: data.markdown,
+      format: state.generateFormat,
       timestamp: new Date().toLocaleTimeString(),
     });
     if (state.generateHistory.length > 10) state.generateHistory.pop();
@@ -469,6 +506,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .settings-panel{font-size:.85rem}
 .create-panel{margin-top:8px}
 .create-model-info{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;font-size:.78rem;color:#64748b}
+.detect-bar{padding:6px 12px;border-radius:6px;font-size:.78rem;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center}
+.detect-loading{color:#6366f1}
+.detect-accepted{color:#16a34a;display:flex;align-items:center;gap:4px}
+.detect-rejected{color:#dc2626}
+.detect-reject{background:none;border:none;cursor:pointer;color:#9ca3af;font-size:.85rem;margin-left:8px;padding:0 4px}
+.detect-reject:hover{color:#dc2626}
 .create-model-badge{font-size:1rem}
 .create-model-hint{color:#94a3b8}
 .create-textarea{width:100%;min-height:120px;padding:12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.9rem;font-family:inherit;resize:vertical;outline:none;line-height:1.5}
@@ -601,7 +644,7 @@ createApp({
                     class: "create-textarea",
                     value: state.generatePrompt,
                     placeholder: "Describe the document you want to create...\n\nExample: Write a summary of all HOA fence and shed rules including height limits and approval requirements.",
-                    onInput: (e: Event) => (state.generatePrompt = (e.target as HTMLTextAreaElement).value),
+                    onInput: (e: Event) => onPromptInput((e.target as HTMLTextAreaElement).value),
                     disabled: state.generateLoading,
                   }),
                   // Document source selector
@@ -630,6 +673,26 @@ createApp({
                       ),
                     ),
                   ]),
+                  // Format detection status bar
+                  (state.detectedFormat || state.detectingFormat)
+                    ? h("div", { class: "detect-bar" }, [
+                        state.detectingFormat
+                          ? h("span", { class: "detect-loading" }, "Detecting format...")
+                          : state.detectedAccepted === true
+                            ? h("span", { class: "detect-accepted" }, [
+                                "✅ ",
+                                `Detected: ${({md:"Markdown",docx:"Word",pdf:"PDF",png:"Image",pptx:"PowerPoint"} as any)[state.detectedFormat]} — ${state.detectedReason}`,
+                                h("button", {
+                                  class: "detect-reject",
+                                  title: "Override",
+                                  onClick: () => { state.detectedAccepted = false; },
+                                }, "✕"),
+                              ])
+                            : state.detectedAccepted === false
+                              ? h("span", { class: "detect-rejected" }, "❌ Overridden — pick format manually below")
+                              : null,
+                      ])
+                    : null,
                   h("div", { class: "create-controls" }, [
                     h("select", {
                       class: "config-input",
@@ -683,6 +746,7 @@ createApp({
                         h("div", { style: "font-weight:600;font-size:.78rem;color:#9ca3af;margin-bottom:4px" }, "Previous Generations"),
                         ...state.generateHistory.slice(1).map((item: any) =>
                           h("div", { class: "history-item" }, [
+                            h("span", { class: "badge", style: "font-size:.65rem;margin-right:4px" }, (item.format || "md").toUpperCase()),
                             h("span", { class: "history-prompt" }, item.prompt),
                             h("span", { class: "history-time" }, item.timestamp),
                             h("button", {
@@ -775,7 +839,7 @@ createApp({
                     state.configOpen ? h("div", { class: "collapsible-body" }, [
                       ...Object.entries(state.configEdits).map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
 
@@ -783,6 +847,7 @@ createApp({
                           h("label", { class: "config-label" }, ({
                             "BEDROCK_MODEL_ID": "Ask AI Model",
                             "BEDROCK_GENERATE_MODEL_ID": "Create Document Model",
+                            "BEDROCK_DETECT_MODEL_ID": "Format Detection Model",
                             "BEDROCK_VISION_MODEL_ID": "Vision OCR Model",
                             "AWS_REGION": "AWS Region",
                             "BOOKSTACK_URL": "BookStack URL",

@@ -157,58 +157,125 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
 
 
 def convert_to_docx(markdown_content: str) -> bytes:
-    """Convert markdown to DOCX using Pandoc."""
-    with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as md_file:
-        md_file.write(markdown_content)
-        md_path = md_file.name
+    """Convert markdown to a styled DOCX using python-docx for full control."""
+    from docx import Document
+    from docx.shared import Pt, Inches, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.style import WD_STYLE_TYPE
+    import io
 
-    out_path = md_path.replace(".md", ".docx")
-    try:
-        subprocess.run(
-            ["pandoc", md_path, "-o", out_path, "--toc"],
-            check=True, capture_output=True,
-        )
-        return Path(out_path).read_bytes()
-    finally:
-        os.unlink(md_path)
-        if os.path.exists(out_path):
-            os.unlink(out_path)
+    doc = Document()
+
+    # Set margins
+    for section in doc.sections:
+        section.top_margin = Cm(2.5)
+        section.bottom_margin = Cm(2.5)
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(2.5)
+
+    # Style the default font
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0x37, 0x41, 0x51)
+    style.paragraph_format.space_after = Pt(6)
+    style.paragraph_format.line_spacing = 1.15
+
+    # Style headings
+    for level in range(1, 4):
+        h_style = doc.styles[f"Heading {level}"]
+        h_style.font.name = "Calibri"
+        h_style.font.color.rgb = RGBColor(0x1A, 0x1A, 0x2E)
+        if level == 1:
+            h_style.font.size = Pt(24)
+            h_style.font.bold = True
+            h_style.paragraph_format.space_before = Pt(0)
+            h_style.paragraph_format.space_after = Pt(12)
+        elif level == 2:
+            h_style.font.size = Pt(16)
+            h_style.font.bold = True
+            h_style.paragraph_format.space_before = Pt(18)
+            h_style.paragraph_format.space_after = Pt(6)
+        else:
+            h_style.font.size = Pt(13)
+            h_style.font.bold = True
+
+    # Parse and build document
+    lines = markdown_content.split("\n")
+    for line in lines:
+        stripped = line.rstrip()
+
+        if stripped.startswith("# "):
+            doc.add_heading(stripped[2:].strip(), level=1)
+        elif stripped.startswith("## "):
+            doc.add_heading(stripped[3:].strip(), level=2)
+        elif stripped.startswith("### "):
+            doc.add_heading(stripped[4:].strip(), level=3)
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            p = doc.add_paragraph(stripped[2:].strip(), style="List Bullet")
+            p.paragraph_format.space_after = Pt(4)
+        elif stripped.startswith("☐ "):
+            p = doc.add_paragraph("☐ " + stripped[2:].strip())
+            p.paragraph_format.left_indent = Cm(1)
+            p.paragraph_format.space_after = Pt(4)
+        elif stripped.startswith("**") and stripped.endswith("**"):
+            p = doc.add_paragraph()
+            run = p.add_run(stripped.strip("*").strip())
+            run.bold = True
+        elif "___" in stripped or "—" * 5 in stripped:
+            # Signature/form line
+            p = doc.add_paragraph(stripped)
+            p.paragraph_format.space_before = Pt(12)
+        elif stripped.strip():
+            # Handle inline bold
+            p = doc.add_paragraph()
+            _add_rich_text(p, stripped)
+        # Skip empty lines (they become paragraph spacing)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _add_rich_text(paragraph, text: str):
+    """Parse simple markdown bold (**text**) into Word runs."""
+    import re
+    parts = re.split(r"(\*\*[^*]+\*\*)", text)
+    for part in parts:
+        if part.startswith("**") and part.endswith("**"):
+            run = paragraph.add_run(part[2:-2])
+            run.bold = True
+        else:
+            paragraph.add_run(part)
 
 
 def convert_to_pdf(markdown_content: str) -> bytes:
-    """Convert markdown to PDF using Pandoc + weasyprint or HTML intermediate."""
-    with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as md_file:
-        md_file.write(markdown_content)
-        md_path = md_file.name
+    """Convert markdown to PDF via DOCX intermediate for consistent styling."""
+    # Generate styled DOCX first
+    docx_bytes = convert_to_docx(markdown_content)
 
-    out_path = md_path.replace(".md", ".pdf")
-    try:
-        # Try pandoc with weasyprint first
-        result = subprocess.run(
-            ["pandoc", md_path, "-o", out_path, "--pdf-engine=weasyprint"],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            return Path(out_path).read_bytes()
+    # Convert DOCX to PDF using weasyprint via HTML
+    # (since LibreOffice may not be available in container)
+    import markdown as md_lib
+    from weasyprint import HTML
 
-        # Fallback: convert to HTML then use weasyprint directly
-        import markdown as md_lib
-        from weasyprint import HTML
+    html = md_lib.markdown(markdown_content, extensions=["tables", "fenced_code"])
+    styled = f"""<html><head><style>
+        @page {{ margin: 2.5cm; size: A4; }}
+        body {{ font-family: Calibri, sans-serif; font-size: 11pt; color: #374151; line-height: 1.5; }}
+        h1 {{ font-size: 24pt; color: #1a1a2e; font-weight: bold; margin-top: 0; margin-bottom: 12pt; }}
+        h2 {{ font-size: 16pt; color: #1a1a2e; font-weight: bold; margin-top: 18pt; margin-bottom: 6pt;
+              border-bottom: 2px solid #6366f1; padding-bottom: 4pt; }}
+        h3 {{ font-size: 13pt; color: #1a1a2e; font-weight: bold; }}
+        ul {{ padding-left: 20pt; }}
+        li {{ margin-bottom: 4pt; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 12pt 0; }}
+        td, th {{ border: 1px solid #e5e7eb; padding: 8pt 12pt; font-size: 10pt; }}
+        th {{ background: #f3f4f6; font-weight: bold; }}
+        p {{ margin-bottom: 6pt; }}
+    </style></head><body>{html}</body></html>"""
 
-        html = md_lib.markdown(markdown_content, extensions=["tables", "fenced_code"])
-        styled = f"""<html><head><style>
-            body {{ font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; }}
-            h1 {{ color: #1a1a2e; }} h2 {{ color: #374151; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            td, th {{ border: 1px solid #ddd; padding: 8px; }}
-        </style></head><body>{html}</body></html>"""
-
-        pdf_bytes = HTML(string=styled).write_pdf()
-        return pdf_bytes
-    finally:
-        os.unlink(md_path)
-        if os.path.exists(out_path):
-            os.unlink(out_path)
+    return HTML(string=styled).write_pdf()
 
 
 def convert_to_png(markdown_content: str) -> bytes:
@@ -242,19 +309,144 @@ def convert_to_png(markdown_content: str) -> bytes:
 
 
 def convert_to_pptx(markdown_content: str) -> bytes:
-    """Convert markdown to PPTX using Pandoc (slide per heading)."""
-    with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as md_file:
-        md_file.write(markdown_content)
-        md_path = md_file.name
+    """Convert markdown to a styled PPTX using python-pptx for full control."""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    import io
 
-    out_path = md_path.replace(".md", ".pptx")
-    try:
-        subprocess.run(
-            ["pandoc", md_path, "-o", out_path],
-            check=True, capture_output=True,
-        )
-        return Path(out_path).read_bytes()
-    finally:
-        os.unlink(md_path)
-        if os.path.exists(out_path):
-            os.unlink(out_path)
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    # Parse markdown into slides
+    slides_data = _parse_slides(markdown_content)
+
+    # Colors
+    NAVY = RGBColor(0x1A, 0x1A, 0x2E)
+    INDIGO = RGBColor(0x63, 0x66, 0xF1)
+    GRAY = RGBColor(0x4B, 0x55, 0x63)
+    LIGHT_BG = RGBColor(0xF8, 0xFA, 0xFC)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+    for i, slide_data in enumerate(slides_data):
+        if i == 0:
+            # Title slide
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+            # Dark background
+            bg = slide.background
+            fill = bg.fill
+            fill.solid()
+            fill.fore_color.rgb = NAVY
+
+            # Title
+            left, top = Inches(1), Inches(2.5)
+            txBox = slide.shapes.add_textbox(left, top, Inches(11), Inches(2))
+            tf = txBox.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0]
+            p.text = slide_data["title"]
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = WHITE
+            p.alignment = PP_ALIGN.CENTER
+
+            # Subtitle line
+            if slide_data.get("bullets"):
+                p2 = tf.add_paragraph()
+                p2.text = slide_data["bullets"][0] if slide_data["bullets"] else ""
+                p2.font.size = Pt(18)
+                p2.font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
+                p2.alignment = PP_ALIGN.CENTER
+        else:
+            # Content slide
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+            bg = slide.background
+            fill = bg.fill
+            fill.solid()
+            fill.fore_color.rgb = LIGHT_BG
+
+            # Title bar
+            title_bar = slide.shapes.add_shape(
+                1, Inches(0), Inches(0), prs.slide_width, Inches(1.2),
+            )
+            title_bar.fill.solid()
+            title_bar.fill.fore_color.rgb = NAVY
+            title_bar.line.fill.background()
+
+            # Title text
+            txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.2), Inches(11), Inches(0.9))
+            tf = txBox.text_frame
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            p = tf.paragraphs[0]
+            p.text = slide_data["title"]
+            p.font.size = Pt(28)
+            p.font.bold = True
+            p.font.color.rgb = WHITE
+
+            # Bullet points
+            if slide_data.get("bullets"):
+                content_box = slide.shapes.add_textbox(
+                    Inches(1), Inches(1.6), Inches(11), Inches(5.2),
+                )
+                tf = content_box.text_frame
+                tf.word_wrap = True
+
+                for j, bullet in enumerate(slide_data["bullets"]):
+                    if j == 0:
+                        p = tf.paragraphs[0]
+                    else:
+                        p = tf.add_paragraph()
+                    p.text = bullet
+                    p.font.size = Pt(18)
+                    p.font.color.rgb = GRAY
+                    p.space_after = Pt(12)
+                    p.level = 0
+
+            # Slide number
+            num_box = slide.shapes.add_textbox(
+                Inches(12.2), Inches(7), Inches(0.8), Inches(0.4),
+            )
+            num_tf = num_box.text_frame
+            num_p = num_tf.paragraphs[0]
+            num_p.text = str(i + 1)
+            num_p.font.size = Pt(10)
+            num_p.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+            num_p.alignment = PP_ALIGN.RIGHT
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def _parse_slides(markdown: str) -> list[dict]:
+    """Parse markdown into slide data: [{title, bullets}, ...]"""
+    slides = []
+    current: dict = {"title": "", "bullets": []}
+
+    for line in markdown.split("\n"):
+        line = line.rstrip()
+        if line.startswith("# "):
+            if current["title"]:
+                slides.append(current)
+            current = {"title": line[2:].strip(), "bullets": []}
+        elif line.startswith("## "):
+            if current["title"]:
+                slides.append(current)
+            current = {"title": line[3:].strip(), "bullets": []}
+        elif line.startswith("- ") or line.startswith("* "):
+            current["bullets"].append(line[2:].strip())
+        elif line.startswith("☐ "):
+            current["bullets"].append("☐ " + line[2:].strip())
+        elif line.startswith("**") and line.endswith("**"):
+            current["bullets"].append(line.strip("*").strip())
+        elif line.strip() and not line.startswith("#"):
+            # Regular text becomes a bullet
+            if line.strip():
+                current["bullets"].append(line.strip())
+
+    if current["title"]:
+        slides.append(current)
+
+    return slides if slides else [{"title": "Untitled", "bullets": ["No content generated"]}]
