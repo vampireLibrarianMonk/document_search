@@ -155,3 +155,75 @@ docs/
 1. **Immediate improvement:** Replace the ODT/LibreOffice step with Pandoc for direct `.docx` output with searchable text.
 2. **Medium-term:** Add a `docs/` Sphinx site using MyST-Parser to unify all project documentation (guides + test specs) under one build system.
 3. **Keep existing tool** for visual-fidelity PNG exports where exact rendered appearance matters (e.g., embedding screenshots in presentations).
+
+---
+
+## 4. Reference Implementation: SVG Template → Document Pipeline (ORRG Project)
+
+The **Open Range Ring Generator** (`range_ring_2016_05_12`) implements a production SVG-to-document generation pipeline that converts geospatial analysis outputs into professional IC-style PNG and PDF products via an SVG template intermediary.
+
+### Pipeline
+
+```
+RangeRingOutput / Trajectory Data
+    → render map image (matplotlib + GeoServer WMS basemap)
+    → encode map as base64 PNG
+    → load SVG template (app/templates/output-template.svg)
+    → substitute title, classification, legend, coordinates, attribution, map image
+    → dynamically build multi-item legend via ElementTree
+    → output final SVG string
+    → CairoSVG converts SVG → PNG (cairosvg.svg2png)
+    → CairoSVG converts SVG → PDF (cairosvg.svg2pdf)
+```
+
+### Source Files
+
+| File | Purpose |
+|------|---------|
+| `app/exports/png.py` → `render_svg_with_template()` | Main SVG rendering engine for range-ring tools (~340 lines) |
+| `app/exports/pdf.py` → `export_to_pdf_bytes()` | SVG → PDF conversion via CairoSVG (with reportlab fallback) |
+| `app/templates/output-template.svg` | IC-style product layout template (1400×900px, header/map/legend/metadata) |
+| `app/ui/tools/shared.py` → `_cached_svg_export()` | Streamlit-cached SVG generation for reuse by PNG and PDF exports |
+| `app/ui/tools/launch_trajectory/ui.py` → `_render_trajectory_svg_with_template()` | Trajectory-specific SVG rendering variant |
+| `app/ui/command/shared_command_utils.py` | Command Center SVG→PNG/PDF export path |
+
+### SVG Template Structure (`output-template.svg`)
+
+The template is a 1400×900 SVG with stable element IDs for programmatic substitution:
+
+| Element ID | Content |
+|------------|---------|
+| `product_title_line1` / `line2` | Dynamic title and subtitle |
+| `classification_top_right` / `bottom_left` | Classification banners |
+| `created_by`, `source_line1`, `source_line2` | Attribution metadata |
+| `map_image` | Base64-encoded map PNG (main content area: 1336×676px) |
+| `legend_items_container` | Dynamically generated multi-item legend (expands upward) |
+| `coordinate_line1` / `line2` | Projection and datum info |
+| `attribution_text` | Data source attribution |
+
+### Dependencies
+
+| Package | Version | Role |
+|---------|---------|------|
+| `CairoSVG` | 2.8.2 | SVG → PNG and SVG → PDF rasterization |
+| `cairocffi` | 1.7.1 | Cairo bindings (CairoSVG backend) |
+| `reportlab` | 4.4.9 | Fallback PDF generation if CairoSVG unavailable |
+| `simplekml` | 1.3.6 | KMZ export (parallel export path) |
+
+### Key Design Patterns
+
+- **Single SVG, multiple outputs:** One `render_svg_with_template()` call produces the SVG; the same bytes feed both `svg2png` and `svg2pdf` — no redundant rendering.
+- **Streamlit caching:** `@st.cache_data` decorators on `_cached_svg_export`, `_cached_png_export`, `_cached_pdf_export` prevent re-rendering on UI interactions.
+- **Dynamic legend via ElementTree:** Legend items are built programmatically from output layers (polygons → rect swatches, points → circles, lines → line elements), with the legend box expanding upward from a fixed bottom edge.
+- **Template rationale:** Deterministic, version-controlled SVG layout replaces proprietary ArcGIS MXD workflows — transparent, scriptable, and analyst-owned.
+- **Graceful fallback:** If CairoSVG is not installed, PDF export falls back to reportlab-based generation (no SVG template, simpler layout).
+
+### Applicability to This Project
+
+| ORRG Pattern | Potential Reuse |
+|--------------|-----------------|
+| SVG template with stable IDs + string substitution | Any report needing branded/structured layout with dynamic content |
+| CairoSVG for SVG → PNG/PDF | Lightweight alternative to Playwright for vector-to-raster conversion |
+| Base64 image embedding in SVG | Embedding charts, maps, or screenshots in templated documents |
+| ElementTree for dynamic SVG manipulation | Programmatic legend/table/diagram generation |
+| Cached export pipeline | Streamlit or web apps needing on-demand document generation without re-computation |

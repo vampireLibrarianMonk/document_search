@@ -61,7 +61,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -87,6 +87,19 @@ const state = reactive({
   usageData: null as any,
   pricingRegion: "",
   pricingUrl: "",
+
+  // Create/Generate
+  generatePrompt: "",
+  generateFormat: "md" as string,
+  generateLoading: false,
+  generateResult: "" as string,
+  generateError: "",
+  generateSelectedDocs: [] as string[],
+  generateFileB64: "" as string,
+  generateFilename: "" as string,
+  generateDone: false,
+  generateDownloading: false,
+  generateHistory: [] as Array<{ prompt: string; markdown: string; timestamp: string }>,
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -190,6 +203,87 @@ async function loadHealthCheck() {
     state.healthErrors = [`Could not reach API: ${e.message}`];
   } finally {
     state.healthLoading = false;
+  }
+}
+
+async function generateDoc() {
+  if (!state.generatePrompt.trim()) return;
+  state.generateLoading = true;
+  state.generateError = "";
+  state.generateResult = "";
+  state.generateDone = false;
+  try {
+    // Always generate as markdown first (cheapest, Bedrock call)
+    const resp = await fetch(`${apiBase}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: state.generatePrompt,
+        format: state.generateFormat,
+        document_ids: state.generateSelectedDocs.length > 0 ? state.generateSelectedDocs : undefined,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      state.generateError = err.detail || "Generation failed";
+      return;
+    }
+    const data = await resp.json();
+    state.generateResult = data.markdown;
+    state.generateDone = true;
+    // Save to history
+    state.generateHistory.unshift({
+      prompt: state.generatePrompt,
+      markdown: data.markdown,
+      timestamp: new Date().toLocaleTimeString(),
+    });
+    if (state.generateHistory.length > 10) state.generateHistory.pop();
+  } catch (e: any) {
+    state.generateError = e.message || "Could not reach server";
+  } finally {
+    state.generateLoading = false;
+  }
+}
+
+async function downloadGenerated(markdown?: string) {
+  const content = markdown || state.generateResult;
+  if (!content) return;
+  const fmt = state.generateFormat;
+
+  if (fmt === "md") {
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "generated.md"; a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // Call backend to convert markdown to the selected format
+  state.generateDownloading = true;
+  try {
+    const resp = await fetch(`${apiBase}/generate/convert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markdown: content, format: fmt }),
+    });
+    if (!resp.ok) {
+      state.generateError = "Conversion failed";
+      return;
+    }
+    const data = await resp.json();
+    const byteChars = atob(data.file_b64);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = data.filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e: any) {
+    state.generateError = e.message || "Download failed";
+  } finally {
+    state.generateDownloading = false;
   }
 }
 
@@ -373,6 +467,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner-dark{border:2px solid #e5e7eb;border-top-color:#6366f1}
 .settings-panel{font-size:.85rem}
+.create-panel{margin-top:8px}
+.create-model-info{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;font-size:.78rem;color:#64748b}
+.create-model-badge{font-size:1rem}
+.create-model-hint{color:#94a3b8}
+.create-textarea{width:100%;min-height:120px;padding:12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.9rem;font-family:inherit;resize:vertical;outline:none;line-height:1.5}
+.create-textarea:focus{border-color:#6366f1}
+.create-controls{display:flex;gap:8px;align-items:center;margin-top:10px}
+.create-source{margin-top:10px}
+.create-source-label{font-size:.78rem;color:#6b7280;display:block;margin-bottom:4px}
+.create-doc-picker{max-height:150px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;padding:6px}
+.create-doc-option{display:flex;align-items:center;gap:6px;padding:3px 4px;font-size:.8rem;cursor:pointer;border-radius:4px}
+.create-doc-option:hover{background:#f3f4f6}
+.create-doc-option input{margin:0}
+.create-preview{margin-top:12px;padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:.82rem;font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto;line-height:1.5}
+.create-img-preview{max-width:100%;border:1px solid #e5e7eb;border-radius:8px}
+.create-pdf-preview{width:100%;height:500px;border:1px solid #e5e7eb;border-radius:8px}
+.create-history{margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px}
+.history-item{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:.8rem;border-bottom:1px solid #f9fafb}
+.history-prompt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151}
+.history-time{color:#9ca3af;font-size:.72rem;flex-shrink:0}
 .collapsible{margin-bottom:10px;border:1px solid #f3f4f6;border-radius:8px;overflow:hidden}
 .collapsible-header{padding:10px 12px;cursor:pointer;background:#fafafa;font-weight:600;font-size:.82rem;display:flex;align-items:center;gap:6px;user-select:none}
 .collapsible-header:hover{background:#f3f4f6}
@@ -471,10 +585,126 @@ createApp({
                 onClick: () => (state.mode = "ask"),
               }, "Ask AI"),
               h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "create" ? "active" : ""}`,
+                onClick: () => { state.mode = "create"; loadConfig(); },
+              }, "✏ Create"),
+              h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "settings" ? "active" : ""}`,
                 onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); },
               }, "⚙ Settings"),
             ]),
+
+            // Create panel
+            state.mode === "create"
+              ? h("div", { class: "create-panel" }, [
+                  h("textarea", {
+                    class: "create-textarea",
+                    value: state.generatePrompt,
+                    placeholder: "Describe the document you want to create...\n\nExample: Write a summary of all HOA fence and shed rules including height limits and approval requirements.",
+                    onInput: (e: Event) => (state.generatePrompt = (e.target as HTMLTextAreaElement).value),
+                    disabled: state.generateLoading,
+                  }),
+                  // Document source selector
+                  h("div", { class: "create-source" }, [
+                    h("label", { class: "create-source-label" },
+                      state.generateSelectedDocs.length > 0
+                        ? `Source: ${state.generateSelectedDocs.length} document${state.generateSelectedDocs.length === 1 ? "" : "s"} selected`
+                        : "Source: auto-search (or pick specific documents below)",
+                    ),
+                    h("div", { class: "create-doc-picker" },
+                      state.documents.map((d) =>
+                        h("label", { class: "create-doc-option" }, [
+                          h("input", {
+                            type: "checkbox",
+                            checked: state.generateSelectedDocs.includes(d.document_id),
+                            onChange: () => {
+                              if (state.generateSelectedDocs.includes(d.document_id)) {
+                                state.generateSelectedDocs = state.generateSelectedDocs.filter((id: string) => id !== d.document_id);
+                              } else {
+                                state.generateSelectedDocs = [...state.generateSelectedDocs, d.document_id];
+                              }
+                            },
+                          }),
+                          h("span", d.title),
+                        ]),
+                      ),
+                    ),
+                  ]),
+                  h("div", { class: "create-controls" }, [
+                    h("select", {
+                      class: "config-input",
+                      style: "width:auto",
+                      value: state.generateFormat,
+                      onChange: (e: Event) => {
+                        state.generateFormat = (e.target as HTMLSelectElement).value;
+                      },
+                    }, [
+                      h("option", { value: "md" }, "Markdown (.md)"),
+                      h("option", { value: "docx" }, "Word (.docx)"),
+                      h("option", { value: "pdf" }, "PDF (.pdf)"),
+                      h("option", { value: "png" }, "Image (.png)"),
+                      h("option", { value: "pptx" }, "PowerPoint (.pptx)"),
+                    ]),
+                    h("button", {
+                      class: "btn btn-primary",
+                      disabled: state.generateLoading || !state.generatePrompt.trim(),
+                      onClick: generateDoc,
+                    }, [
+                      state.generateLoading ? "Generating..." : "Generate",
+                      state.generateLoading ? h("span", { class: "spinner" }) : null,
+                    ]),
+                    state.generateDone
+                      ? h("button", {
+                          class: "btn btn-outline",
+                          onClick: () => { (state as any).showPreview = !(state as any).showPreview; },
+                        }, (state as any).showPreview ? "Hide Preview" : "Preview")
+                      : null,
+                    state.generateDone
+                      ? h("button", {
+                          class: "btn btn-primary btn-sm",
+                          disabled: state.generateDownloading,
+                          onClick: () => downloadGenerated(),
+                        }, [
+                          state.generateDownloading ? "Converting..." : `Download .${state.generateFormat}`,
+                          state.generateDownloading ? h("span", { class: "spinner" }) : null,
+                        ])
+                      : null,
+                  ]),
+                  state.generateError
+                    ? h("div", { class: "status status-error", style: "margin-top:8px" }, state.generateError)
+                    : null,
+                  // Preview (toggled)
+                  state.generateDone && (state as any).showPreview
+                    ? h("div", { class: "create-preview" }, state.generateResult)
+                    : null,
+                  // History
+                  state.generateHistory.length > 1
+                    ? h("div", { class: "create-history" }, [
+                        h("div", { style: "font-weight:600;font-size:.78rem;color:#9ca3af;margin-bottom:4px" }, "Previous Generations"),
+                        ...state.generateHistory.slice(1).map((item: any) =>
+                          h("div", { class: "history-item" }, [
+                            h("span", { class: "history-prompt" }, item.prompt),
+                            h("span", { class: "history-time" }, item.timestamp),
+                            h("button", {
+                              class: "btn-view",
+                              title: "Load this generation",
+                              onClick: () => {
+                                state.generateResult = item.markdown;
+                                state.generateDone = true;
+                                (state as any).showPreview = true;
+                              },
+                            }, "↩"),
+                            h("button", {
+                              class: "btn-view",
+                              title: "Download",
+                              onClick: () => downloadGenerated(item.markdown),
+                            }, "⬇"),
+                          ]),
+                        ),
+                      ])
+                    : null,
+                ])
+              : null,
 
             // Settings panel
             state.mode === "settings"
@@ -545,13 +775,14 @@ createApp({
                     state.configOpen ? h("div", { class: "collapsible-body" }, [
                       ...Object.entries(state.configEdits).map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
 
                         return h("div", { class: "config-row" }, [
                           h("label", { class: "config-label" }, ({
                             "BEDROCK_MODEL_ID": "Ask AI Model",
+                            "BEDROCK_GENERATE_MODEL_ID": "Create Document Model",
                             "BEDROCK_VISION_MODEL_ID": "Vision OCR Model",
                             "AWS_REGION": "AWS Region",
                             "BOOKSTACK_URL": "BookStack URL",
@@ -691,7 +922,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -718,7 +949,7 @@ createApp({
           ]),
 
           // Results card (hidden in settings mode)
-          state.mode !== "settings" && (hasResults.value || state.searchError || state.searchTime !== null)
+          state.mode !== "settings" && state.mode !== "create" && (hasResults.value || state.searchError || state.searchTime !== null)
             ? h("div", { class: "card" }, [
                 h("h2", "Results"),
                 state.searchTime !== null

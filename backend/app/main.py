@@ -278,6 +278,108 @@ async def bookstack_sync() -> BulkUploadResponse:
     return BulkUploadResponse(uploaded=uploaded, errors=errors)
 
 
+# -- Document Generation --
+
+
+@app.post("/generate")
+def generate_document(body: dict):
+    """Generate a document from a user prompt, grounded in indexed documents."""
+    from fastapi.responses import Response
+    from .generator import generate_markdown
+
+    prompt = body.get("prompt", "").strip()
+    fmt = body.get("format", "md").lower()
+    top_k = body.get("top_k", 15)
+    filters = body.get("filters", {})
+    document_ids = body.get("document_ids")  # optional: specific docs to use
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    if fmt not in ("md", "docx", "pdf", "png", "pptx"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+    context_parts = []
+
+    if document_ids:
+        # User selected specific documents: use all their chunks as context
+        for doc_id in document_ids:
+            doc = store.get_document(doc_id)
+            if not doc:
+                continue
+            chunks = store.get_chunks(doc_id)
+            if chunks:
+                text = "\n".join(c.content for c in chunks)
+                context_parts.append(f"[{doc.title}]\n{text}")
+    else:
+        # Auto-search: retrieve relevant chunks (same as Ask AI)
+        search_result = run_search(store, SearchRequest(
+            query=prompt, mode="hybrid", filters=filters, page=1, page_size=top_k * 5,
+        ))
+
+        seen: dict[str, list] = {}
+        for r in search_result.results:
+            seen.setdefault(r.document_id, []).append(r)
+        top = [chunks[0] for chunks in seen.values()]
+        top.sort(key=lambda r: r.score, reverse=True)
+        top = top[:top_k]
+
+        for r in top:
+            full_chunks = store.get_chunks(r.document_id)
+            for idx, ch in enumerate(full_chunks):
+                if ch.chunk_id == r.chunk_id:
+                    parts = []
+                    if idx > 0:
+                        parts.append(full_chunks[idx - 1].content)
+                    parts.append(ch.content)
+                    if idx < len(full_chunks) - 1:
+                        parts.append(full_chunks[idx + 1].content)
+                    context_parts.append(f"[{r.title}]\n" + "\n".join(parts))
+                    break
+
+    context = "\n\n---\n\n".join(context_parts)
+
+    if not context.strip():
+        raise HTTPException(
+            status_code=404,
+            detail="No relevant documents found. Upload documents first.",
+        )
+
+    # Generate markdown content via Bedrock
+    markdown_content = generate_markdown(prompt, context, manual_mode=bool(document_ids), fmt=fmt)
+
+    return {"markdown": markdown_content, "format": fmt}
+
+
+@app.post("/generate/convert")
+def generate_convert(body: dict):
+    """Convert previously generated markdown to a different format (no Bedrock call)."""
+    import base64
+    from .generator import convert_to_docx, convert_to_pdf, convert_to_png, convert_to_pptx
+
+    markdown = body.get("markdown", "")
+    fmt = body.get("format", "md")
+
+    if not markdown:
+        raise HTTPException(status_code=400, detail="No markdown content provided")
+
+    if fmt == "docx":
+        file_bytes = convert_to_docx(markdown)
+        filename = "generated.docx"
+    elif fmt == "pdf":
+        file_bytes = convert_to_pdf(markdown)
+        filename = "generated.pdf"
+    elif fmt == "png":
+        file_bytes = convert_to_png(markdown)
+        filename = "generated.png"
+    elif fmt == "pptx":
+        file_bytes = convert_to_pptx(markdown)
+        filename = "generated.pptx"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+    return {"file_b64": base64.b64encode(file_bytes).decode(), "filename": filename}
+
+
 # -- Admin --
 
 
@@ -637,9 +739,11 @@ def admin_get_config():
     """Return current configuration (secrets are masked)."""
     qa_model = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+    gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", qa_model)
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
+        "BEDROCK_GENERATE_MODEL_ID": gen_model,
         "BEDROCK_VISION_MODEL_ID": vision_model,
         "OPENSEARCH_HOST": os.getenv("OPENSEARCH_HOST", "localhost"),
         "OPENSEARCH_PORT": os.getenv("OPENSEARCH_PORT", "9200"),
@@ -659,6 +763,7 @@ def admin_update_config(updates: dict):
     allowed = {
         "AWS_REGION",
         "BEDROCK_MODEL_ID",
+        "BEDROCK_GENERATE_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",
         "BOOKSTACK_URL",
         "BOOKSTACK_TOKEN_ID",
