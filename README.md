@@ -20,6 +20,7 @@ When you upload a document, the app automatically reads the content (including s
 
 ### Managing Documents
 
+- Click any document title to open or download the original file
 - Click the "x" button next to any document to delete it (removes from search index, database, and BookStack)
 - Click "Clear All" to wipe everything and start fresh
 - Documents are grouped by category with collapsible sections
@@ -54,7 +55,7 @@ When you upload a PDF, the app handles each page individually:
 
 - Pages with text are read directly using pypdf (free, instant)
 - Scanned pages with no text layer are sent to the selected Vision OCR model via Bedrock Converse API (costs about $0.002 per page)
-- Pages with both text and images get both extracted and merged so nothing is missed
+- Mixed pages with both text and images get both extracted and merged so nothing is missed
 
 ### How Search and Ask Work
 
@@ -97,12 +98,14 @@ Quick start with Docker:
 make up
 ```
 
-Or with HTTPS:
+Or with HTTPS (adds a Caddy reverse proxy for TLS termination):
 
 ```bash
 make certs
 make up-https
 ```
+
+If you previously started local dev with `make dev-all`, stop that first before switching to HTTPS so port `5173` is free for Docker.
 
 Or locally without containers:
 
@@ -133,6 +136,7 @@ Key endpoints:
 - `GET /documents` - List all documents
 - `GET /documents/{id}` - Get a single document
 - `GET /documents/{id}/chunks` - Get a document's text chunks
+- `GET /documents/{id}/file` - Download the original uploaded file
 - `DELETE /documents/{id}` - Delete a document
 - `DELETE /documents` - Delete all documents
 - `POST /sources/bookstack/sync` - Sync from BookStack
@@ -143,6 +147,7 @@ Key endpoints:
 - `GET /admin/models` - Available Bedrock models with labels
 - `GET /admin/usage` - Token usage and cost summary
 - `GET /admin/pricing` - Current Bedrock pricing for the region
+- `PUT /admin/pricing` - Manually load pricing JSON
 - `GET /admin/jobs` - Background job status
 - `POST /admin/reindex` - Trigger a reindex
 

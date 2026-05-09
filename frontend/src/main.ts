@@ -722,7 +722,7 @@ createApp({
               ])
             : null,
 
-          // Upload card (files or folder)
+          // Upload card (files or folders - accumulates selections)
           h("div", { class: "card" }, [
             h("h2", "Upload Documents"),
             h("div", { class: "upload-row" }, [
@@ -733,19 +733,27 @@ createApp({
                 disabled: state.uploadLoading,
                 onChange: (e: Event) => {
                   const files = (e.target as HTMLInputElement).files;
-                  state.uploadFiles = files ? Array.from(files) : [];
+                  if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
                 },
               }),
               h("span", { style: "color:#9ca3af;font-size:.8rem" }, "or"),
               h("input", {
                 type: "file",
                 webkitdirectory: true,
+                multiple: true,
                 disabled: state.uploadLoading,
                 onChange: (e: Event) => {
                   const files = (e.target as HTMLInputElement).files;
-                  state.uploadFiles = files ? Array.from(files) : [];
+                  if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
                 },
               }),
+              state.uploadFiles.length > 0 && !state.uploadLoading
+                ? h("button", {
+                    class: "btn btn-sm btn-outline",
+                    onClick: () => { state.uploadFiles = []; },
+                    title: "Clear selection",
+                  }, "✕ Clear")
+                : null,
               h("button", {
                 class: "btn btn-primary btn-sm",
                 disabled: state.uploadLoading || state.uploadFiles.length === 0,
@@ -753,10 +761,14 @@ createApp({
               }, [
                 state.uploadLoading
                   ? "Processing..."
-                  : `Upload${state.uploadFiles.length > 1 ? ` (${state.uploadFiles.length})` : ""}`,
+                  : `Upload${state.uploadFiles.length > 0 ? ` (${state.uploadFiles.length} files)` : ""}`,
                 state.uploadLoading ? h("span", { class: "spinner" }) : null,
               ]),
             ]),
+            state.uploadFiles.length > 0 && !state.uploadLoading
+              ? h("div", { class: "status status-info", style: "margin-top:6px" },
+                  `${state.uploadFiles.length} file${state.uploadFiles.length === 1 ? "" : "s"} selected. Pick more files or folders to add to the batch.`)
+              : null,
             // Live progress log
             state.uploadLog.length > 0
               ? h("div", { class: "upload-log" },

@@ -1,4 +1,4 @@
-nCOMPOSE := docker compose -f infra/docker/compose/docker-compose.yml
+COMPOSE := docker compose -f infra/docker/compose/docker-compose.yml
 
 .PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs
 

@@ -155,6 +155,8 @@ This creates trusted certificates for `app.localhost` and `api.localhost` in `in
 make up-https
 ```
 
+If you already have the local dev frontend running from `make dev-all` or `make dev-frontend`, stop it first so port `5173` is available for the Docker frontend container.
+
 ### 4. Open the app
 
 - Frontend: https://app.localhost
@@ -247,16 +249,24 @@ The backend reads from environment variables. When running with Docker Compose, 
 APP_ENV=container-local
 DATA_DIR=data
 
+# AWS / Bedrock
+AWS_REGION=us-east-1
+BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
+BEDROCK_VISION_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
+TRACK_USAGE=true
+
 # Postgres
 POSTGRES_USER=docsearch
 POSTGRES_PASSWORD=docsearch_local
 POSTGRES_DB=docsearch
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 
 # OpenSearch
 OPENSEARCH_HOST=opensearch
 OPENSEARCH_PORT=9200
 
-# BookStack
+# BookStack (local wiki)
 BOOKSTACK_URL=http://bookstack:80
 BOOKSTACK_TOKEN_ID=
 BOOKSTACK_TOKEN_SECRET=
@@ -266,6 +276,8 @@ CONFLUENCE_URL=
 CONFLUENCE_EMAIL=
 CONFLUENCE_API_TOKEN=
 ```
+
+You can also change most of these at runtime through the Settings tab in the UI without restarting.
 
 ## Quick Verification
 
