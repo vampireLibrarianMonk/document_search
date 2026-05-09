@@ -138,6 +138,7 @@ async def ingest_upload_stream(files: list[UploadFile] = File(...)):
                     "document_id": result.document_id,
                     "category": cat,
                     "document_type": dtype,
+                    "log": result.processing_log,
                 }
                 yield f"data: {_json.dumps(msg)}\n\n"
             except Exception as exc:
@@ -334,9 +335,23 @@ def admin_jobs() -> list[JobResponse]:
     return store.get_jobs()
 
 
-@app.post("/admin/reindex", response_model=JobResponse)
-def admin_reindex() -> JobResponse:
-    return JobResponse(job_id=store.new_job_id("reindex"), status="queued")
+@app.post("/admin/reindex")
+def admin_reindex():
+    """Rebuild the OpenSearch index from Postgres."""
+    os_search.ensure_index()
+    docs = store.list_documents()
+    indexed = 0
+    for doc in docs:
+        chunks = store.get_chunks(doc.document_id)
+        if chunks:
+            os_search.index_chunks(doc.document_id, doc.title, [
+                {"chunk_id": c.chunk_id, "content": c.content,
+                 "source_type": c.source_type, "document_type": c.document_type,
+                 "tags": c.tags}
+                for c in chunks
+            ])
+            indexed += 1
+    return {"status": "completed", "indexed": indexed, "total": len(docs)}
 
 
 @app.get("/admin/usage")
@@ -448,6 +463,33 @@ def admin_health_check():
         }
     else:
         checks["confluence"] = {"status": "not configured"}
+
+    # Index sync check
+    try:
+        doc_count = len(store.list_documents())
+        os_count_resp = os_search.get_client().count(index=os_search.INDEX_NAME)
+        os_doc_ids = set()
+        # Count unique document_ids in OpenSearch
+        agg_resp = os_search.get_client().search(
+            index=os_search.INDEX_NAME,
+            body={"size": 0, "aggs": {"docs": {"cardinality": {"field": "document_id"}}}},
+        )
+        os_unique_docs = agg_resp["aggregations"]["docs"]["value"]
+        in_sync = os_unique_docs >= doc_count
+        checks["search_index"] = {
+            "status": "ok" if in_sync else "out of sync",
+            "postgres_docs": doc_count,
+            "opensearch_docs": os_unique_docs,
+            "version": f"{os_count_resp['count']} chunks indexed",
+        }
+        if not in_sync:
+            errors.append(
+                f"Search index out of sync: {doc_count} docs in database, "
+                f"{os_unique_docs} in search index. Click Reindex to fix."
+            )
+    except Exception as e:
+        checks["search_index"] = {"status": "error", "version": "unavailable"}
+        errors.append(f"Search index check failed: {e}")
 
     return {"checks": checks, "errors": errors}
 

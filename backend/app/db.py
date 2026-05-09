@@ -23,12 +23,18 @@ CREATE TABLE IF NOT EXISTS documents (
     document_type TEXT NOT NULL DEFAULT 'general',
     category TEXT NOT NULL DEFAULT 'Uncategorized',
     tags TEXT[] NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL DEFAULT 'pending'
+    status TEXT NOT NULL DEFAULT 'pending',
+    content_hash TEXT
 );
 
--- Add category column if upgrading from older schema
+-- Add columns if upgrading from older schema
 DO $$ BEGIN
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'Uncategorized';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash TEXT;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 

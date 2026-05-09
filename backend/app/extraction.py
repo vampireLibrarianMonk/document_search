@@ -133,18 +133,30 @@ def _extract_page_image(page, page_num: int, path: str) -> str:
         return ""
 
 
-def extract_text(path: str) -> str:
-    """Pull plain text out of a PDF, DOCX, or text file.
+def extract_text(path: str) -> tuple[str, list[str]]:
+    """Pull plain text out of a PDF, DOCX, image, or text file.
+
+    Returns (extracted_text, processing_log) where processing_log is a list
+    of human-readable messages describing what happened during extraction.
 
     For PDFs, works per-page:
       - Text-only page: use extracted text
       - Image-only page (no text): send to vision LLM
       - Mixed page (text + images): extract text AND send to vision, merge both
+
+    For DOCX/DOC, walks the XML tree in document order:
+      - Text runs are extracted directly
+      - Inline images are sent to vision LLM at their exact position
+
+    For standalone images (.jpg, .png, .tiff):
+      - Sent directly to vision LLM for OCR
     """
     ext = Path(path).suffix.lower()
+    log: list[str] = []
 
     if ext == ".pdf":
         reader = PdfReader(path)
+        log.append(f"PDF with {len(reader.pages)} pages")
         pages_text = []
         for i, page in enumerate(reader.pages, start=1):
             text = (page.extract_text() or "").strip()
@@ -153,27 +165,208 @@ def extract_text(path: str) -> str:
 
             if has_text and not has_images:
                 pages_text.append(text)
+                log.append(f"Page {i}: extracted text ({len(text)} chars)")
             elif has_text and has_images:
-                # Mixed page: get vision description of images, combine with text
                 ocr_text = _extract_page_image(page, i, path)
                 if ocr_text and ocr_text.strip() != text.strip():
                     pages_text.append(f"{text}\n\n[Image content]\n{ocr_text}")
+                    log.append(f"Page {i}: text + vision OCR ({len(text)} + {len(ocr_text)} chars)")
                 else:
                     pages_text.append(text)
+                    log.append(f"Page {i}: text only, image had no new content ({len(text)} chars)")
             else:
-                # No text, send whole page to vision
                 ocr_text = _extract_page_image(page, i, path)
                 if ocr_text:
                     pages_text.append(ocr_text)
-        return "\n".join(pages_text).strip()
+                    log.append(f"Page {i}: scanned, vision OCR ({len(ocr_text)} chars)")
+                else:
+                    log.append(f"Page {i}: empty, no text or image content")
+        result = "\n".join(pages_text).strip().replace("\x00", "")
+        return result, log
 
-    if ext == ".docx":
-        doc = DocxDocument(path)
-        return "\n".join(p.text for p in doc.paragraphs).strip()
+    if ext in (".docx", ".doc"):
+        result, doc_log = _extract_docx_with_images(path)
+        log.extend(doc_log)
+        return result.replace("\x00", ""), log
+
+    if ext in (".jpg", ".jpeg", ".png", ".tiff", ".tif"):
+        log.append("Standalone image, sending to vision LLM")
+        ocr_text = _extract_standalone_image(path)
+        if ocr_text:
+            log.append(f"Vision OCR extracted {len(ocr_text)} chars")
+        else:
+            log.append("Vision OCR returned no text")
+        return (ocr_text or "").replace("\x00", ""), log
 
     # .txt, .md, or anything else
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        return f.read().strip()
+        text = f.read().strip()
+    log.append(f"Plain text file ({len(text)} chars)")
+    return text, log
+
+
+def _extract_standalone_image(path: str) -> str:
+    """Send a standalone image file to the vision LLM for OCR."""
+    try:
+        with open(path, "rb") as f:
+            img_bytes = f.read()
+
+        # Determine format from extension
+        ext = Path(path).suffix.lower()
+        fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".tiff": "tiff", ".tif": "tiff"}
+        fmt = fmt_map.get(ext, "jpeg")
+
+        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
+        resp = _get_bedrock().converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
+                    {"text": "Extract all text from this document image. Return only the text content, no commentary."},
+                ],
+            }],
+            inferenceConfig={"maxTokens": 4096},
+        )
+        text = resp["output"]["message"]["content"][0]["text"]
+
+        # Track usage
+        if os.getenv("TRACK_USAGE", "true").lower() == "true":
+            usage = resp.get("usage", {})
+            from .pricing import estimate_cost
+            from .db import get_conn
+
+            try:
+                cost = estimate_cost(
+                    model_id,
+                    usage.get("inputTokens", 0),
+                    usage.get("outputTokens", 0),
+                    os.getenv("AWS_REGION", "us-east-1"),
+                )
+                conn = get_conn()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO token_usage
+                           (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
+                           VALUES (%s, %s, %s, %s, %s)""",
+                        (model_id, "vision", usage.get("inputTokens", 0),
+                         usage.get("outputTokens", 0), cost),
+                    )
+                conn.close()
+            except Exception:
+                pass
+
+        return text
+    except Exception as e:
+        logger.warning("Standalone image OCR failed for %s: %s", path, e)
+        return ""
+
+
+def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
+    """Extract text and images from a DOCX in document order.
+
+    Walks the XML tree so images appear at their exact position in the text.
+    Falls back to text-only extraction if image processing fails.
+    """
+    from docx.oxml.ns import qn
+
+    log: list[str] = []
+    doc = DocxDocument(path)
+    parts: list[str] = []
+    image_count = 0
+
+    # Get the document's relationship part for resolving image references
+    rels = doc.part.rels
+
+    log.append(f"DOCX with {len(doc.paragraphs)} paragraphs")
+
+    for para in doc.paragraphs:
+        para_parts: list[str] = []
+
+        for run in para.runs:
+            # Check if this run contains a drawing (image)
+            drawings = run.element.findall(f".//{qn('w:drawing')}")
+            if drawings:
+                for drawing in drawings:
+                    # Extract the image relationship ID
+                    blips = drawing.findall(f".//{qn('a:blip')}")
+                    for blip in blips:
+                        embed_id = blip.get(qn("r:embed"))
+                        if embed_id and embed_id in rels:
+                            try:
+                                image_part = rels[embed_id].target_part
+                                img_bytes = image_part.blob
+                                image_count += 1
+
+                                # Send to vision LLM
+                                model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
+                                if model_id:
+                                    # Determine format
+                                    content_type = image_part.content_type or "image/png"
+                                    fmt = content_type.split("/")[-1]
+                                    if fmt == "jpeg":
+                                        fmt = "jpeg"
+                                    elif fmt in ("png", "gif", "webp"):
+                                        pass
+                                    else:
+                                        fmt = "png"
+
+                                    resp = _get_bedrock().converse(
+                                        modelId=model_id,
+                                        messages=[{
+                                            "role": "user",
+                                            "content": [
+                                                {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
+                                                {"text": "Extract all text from this image. Return only the text, no commentary."},
+                                            ],
+                                        }],
+                                        inferenceConfig={"maxTokens": 4096},
+                                    )
+                                    ocr = resp["output"]["message"]["content"][0]["text"]
+                                    para_parts.append(f"\n[Image {image_count}]\n{ocr}")
+                                    log.append(f"Image {image_count}: vision OCR ({len(ocr)} chars)")
+
+                                    # Track usage
+                                    if os.getenv("TRACK_USAGE", "true").lower() == "true":
+                                        usage = resp.get("usage", {})
+                                        from .pricing import estimate_cost
+                                        from .db import get_conn
+                                        try:
+                                            cost = estimate_cost(
+                                                model_id,
+                                                usage.get("inputTokens", 0),
+                                                usage.get("outputTokens", 0),
+                                                os.getenv("AWS_REGION", "us-east-1"),
+                                            )
+                                            conn = get_conn()
+                                            with conn.cursor() as cur:
+                                                cur.execute(
+                                                    """INSERT INTO token_usage
+                                                       (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
+                                                       VALUES (%s, %s, %s, %s, %s)""",
+                                                    (model_id, "vision", usage.get("inputTokens", 0),
+                                                     usage.get("outputTokens", 0), cost),
+                                                )
+                                            conn.close()
+                                        except Exception:
+                                            pass
+                                else:
+                                    log.append(f"Image {image_count}: skipped (no vision model configured)")
+                            except Exception as e:
+                                log.append(f"Image {image_count}: extraction failed ({e})")
+            # Always include the run's text
+            if run.text:
+                para_parts.append(run.text)
+
+        if para_parts:
+            parts.append("".join(para_parts))
+
+    if image_count == 0:
+        log.append("No images found in document")
+    else:
+        log.append(f"Processed {image_count} inline images")
+
+    return "\n".join(parts).strip(), log
 
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:

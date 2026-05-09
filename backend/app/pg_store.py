@@ -46,13 +46,27 @@ class PgStore:
 
     # -- Document CRUD --
 
-    def add_document(self, doc: DocumentResponse) -> None:
+    def find_by_hash(self, content_hash: str) -> DocumentResponse | None:
+        """Check if a document with this content hash already exists."""
+        conn = get_conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM documents WHERE content_hash = %s LIMIT 1",
+                    (content_hash,),
+                )
+                row = cur.fetchone()
+                return DocumentResponse(**row) if row else None
+        finally:
+            conn.close()
+
+    def add_document(self, doc: DocumentResponse, content_hash: str | None = None) -> None:
         conn = get_conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO documents (document_id, title, source_type, source_url, document_type, category, tags, status)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """INSERT INTO documents (document_id, title, source_type, source_url, document_type, category, tags, status, content_hash)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (document_id) DO UPDATE SET
                          title=EXCLUDED.title, category=EXCLUDED.category, tags=EXCLUDED.tags, status=EXCLUDED.status""",
                     (
@@ -64,6 +78,7 @@ class PgStore:
                         doc.category,
                         doc.tags,
                         doc.status,
+                        content_hash,
                     ),
                 )
         finally:

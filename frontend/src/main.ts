@@ -56,6 +56,7 @@ const state = reactive({
     file: string;
     status: "uploading" | "done" | "error";
     detail: string;
+    log?: string[];
   }>,
 
   // Search / Ask / Settings mode
@@ -107,12 +108,12 @@ async function upload() {
   }
 
   // Filter to supported types
-  const supported = [".pdf", ".docx", ".txt", ".md"];
+  const supported = [".pdf", ".docx", ".doc", ".txt", ".md", ".jpg", ".jpeg", ".png", ".tiff", ".tif"];
   const files = state.uploadFiles.filter(f =>
     supported.some(ext => f.name.toLowerCase().endsWith(ext))
   );
   if (files.length === 0) {
-    state.uploadStatus = "No supported files found (PDF, DOCX, TXT, MD)";
+    state.uploadStatus = "No supported files found (PDF, DOCX, DOC, TXT, MD, JPG, PNG, TIFF)";
     return;
   }
 
@@ -153,7 +154,7 @@ async function upload() {
           // Update the last log entry for this file
           const idx = state.uploadLog.findLastIndex((l: any) => l.file === msg.file);
           if (idx >= 0) {
-            state.uploadLog[idx] = { file: msg.file, status: "done", detail: `${msg.category} / ${msg.document_type}` };
+            state.uploadLog[idx] = { file: msg.file, status: "done", detail: `${msg.category} / ${msg.document_type}`, log: msg.log || [] };
           }
         } else if (msg.type === "error") {
           const idx = state.uploadLog.findLastIndex((l: any) => l.file === msg.file);
@@ -237,6 +238,22 @@ async function saveConfig() {
     await loadConfig();
     await loadHealthCheck();
     checkModelWarnings();
+  }
+}
+
+async function viewDoc(id: string) {
+  const key = `view_${id}`;
+  if ((state as any)[key]) {
+    (state as any)[key] = null;  // toggle off
+    return;
+  }
+  try {
+    const resp = await fetch(`${apiBase}/documents/${id}/chunks`);
+    const data = await resp.json();
+    const fullText = data.chunks.map((c: any) => c.content).join("\n\n");
+    (state as any)[key] = fullText || "(no text extracted)";
+  } catch {
+    (state as any)[key] = "(failed to load)";
   }
 }
 
@@ -344,6 +361,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .doc-category .doc-list li{padding:6px 10px 6px 20px}
 .btn-delete{background:none;border:none;color:#d1d5db;cursor:pointer;font-size:.85rem;padding:2px 6px;border-radius:4px;transition:color .15s,background .15s}
 .btn-delete:hover{color:#dc2626;background:#fef2f2}
+.btn-view{background:none;border:none;cursor:pointer;font-size:.85rem;padding:2px 4px}
+.doc-text-viewer{margin-top:6px;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:.8rem;font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;color:#374151;line-height:1.5}
 .btn-danger{background:#dc2626;color:#fff;border:none}
 .btn-danger:hover{background:#b91c1c}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;background:#eef2ff;color:#6366f1}
@@ -391,11 +410,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .usage-model-summary{margin-left:auto;color:#6366f1;font-weight:600;font-size:.78rem}
 .usage-model-detail-body{padding:4px 8px 8px 20px;font-size:.75rem;color:#6b7280;line-height:1.6}
 .upload-log{margin-top:10px;max-height:250px;overflow-y:auto;font-size:.8rem;border:1px solid #f3f4f6;border-radius:8px;padding:6px}
-.log-entry{display:flex;gap:6px;align-items:center;padding:3px 4px;border-bottom:1px solid #f9fafb}
+.log-entry{display:flex;flex-direction:column;padding:3px 4px;border-bottom:1px solid #f9fafb}
 .log-entry:last-child{border-bottom:none}
+.log-entry-header{display:flex;gap:6px;align-items:center}
 .log-icon{flex-shrink:0;width:18px;text-align:center}
 .log-file{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151}
 .log-detail{flex-shrink:0;color:#9ca3af;font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-expand{color:#9ca3af;font-size:.7rem;margin-left:4px}
+.log-body{margin:4px 0 4px 24px;padding:4px 8px;background:#f9fafb;border-radius:4px;font-size:.73rem;color:#6b7280;font-family:'Courier New',monospace;max-height:120px;overflow-y:auto}
+.log-line{padding:1px 0}
 .log-uploading .log-file{color:#6366f1}
 .log-done .log-detail{color:#16a34a}
 .log-error .log-detail{color:#dc2626}
@@ -494,6 +517,17 @@ createApp({
                             ...state.healthErrors.map((err: string) =>
                               h("div", { class: "error-line" }, `$ ${err}`),
                             ),
+                            // Reindex button if search index is out of sync
+                            state.healthChecks && state.healthChecks.search_index && state.healthChecks.search_index.status !== "ok"
+                              ? h("button", {
+                                  class: "btn btn-sm btn-primary",
+                                  style: "margin-top:8px",
+                                  onClick: async () => {
+                                    const resp = await fetch(`${apiBase}/admin/reindex`, { method: "POST" });
+                                    if (resp.ok) { await loadHealthCheck(); }
+                                  },
+                                }, "Reindex Now")
+                              : null,
                           ])
                         : null,
                     ]) : null,
@@ -728,7 +762,7 @@ createApp({
             h("div", { class: "upload-row" }, [
               h("input", {
                 type: "file",
-                accept: ".pdf,.docx,.txt,.md",
+                accept: ".pdf,.docx,.doc,.txt,.md,.jpg,.jpeg,.png,.tiff,.tif",
                 multiple: true,
                 disabled: state.uploadLoading,
                 onChange: (e: Event) => {
@@ -769,17 +803,33 @@ createApp({
               ? h("div", { class: "status status-info", style: "margin-top:6px" },
                   `${state.uploadFiles.length} file${state.uploadFiles.length === 1 ? "" : "s"} selected. Pick more files or folders to add to the batch.`)
               : null,
-            // Live progress log
+            // Live progress log with expandable processing details
             state.uploadLog.length > 0
               ? h("div", { class: "upload-log" },
-                  state.uploadLog.map((entry: any) =>
-                    h("div", { class: `log-entry log-${entry.status}` }, [
-                      h("span", { class: "log-icon" },
-                        entry.status === "uploading" ? "⏳" : entry.status === "done" ? "✅" : "❌"),
-                      h("span", { class: "log-file" }, entry.file),
-                      h("span", { class: "log-detail" }, entry.detail),
-                    ])
-                  )
+                  state.uploadLog.map((entry: any, idx: number) => {
+                    const logKey = `log_open_${idx}`;
+                    const isOpen = (state as any)[logKey];
+                    return h("div", { class: `log-entry log-${entry.status}` }, [
+                      h("div", {
+                        class: "log-entry-header",
+                        onClick: () => { if (entry.log && entry.log.length) (state as any)[logKey] = !isOpen; },
+                        style: entry.log && entry.log.length ? "cursor:pointer" : "",
+                      }, [
+                        h("span", { class: "log-icon" },
+                          entry.status === "uploading" ? "⏳" : entry.status === "done" ? "✅" : "❌"),
+                        h("span", { class: "log-file" }, entry.file),
+                        h("span", { class: "log-detail" }, entry.detail),
+                        entry.log && entry.log.length
+                          ? h("span", { class: "log-expand" }, isOpen ? "▼" : "▶")
+                          : null,
+                      ]),
+                      isOpen && entry.log
+                        ? h("div", { class: "log-body" },
+                            entry.log.map((line: string) => h("div", { class: "log-line" }, line)),
+                          )
+                        : null,
+                    ]);
+                  }),
                 )
               : null,
             state.uploadStatus
@@ -838,11 +888,21 @@ createApp({
                                       class: `badge ${d.status === "indexed" ? "badge-green" : ""}`,
                                     }, d.status),
                                     h("button", {
+                                      class: "btn-view",
+                                      title: "View extracted text",
+                                      onClick: () => viewDoc(d.document_id),
+                                    }, (state as any)[`view_${d.document_id}`] ? "🙈" : "👁"),
+                                    h("button", {
                                       class: "btn-delete",
                                       title: "Delete",
                                       onClick: () => deleteDoc(d.document_id),
                                     }, "✕"),
                                   ]),
+                                  (state as any)[`view_${d.document_id}`]
+                                    ? h("div", { class: "doc-text-viewer" },
+                                        (state as any)[`view_${d.document_id}`],
+                                      )
+                                    : null,
                                 ]),
                               ),
                             )

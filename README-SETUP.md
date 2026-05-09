@@ -312,7 +312,7 @@ document_search/
       main.py              # FastAPI routes, settings, health checks
       schemas.py           # Request/response models (Pydantic)
       services.py          # Ingestion pipeline, search, and AI Q&A
-      extraction.py        # Text extraction (PDF/DOCX/TXT) with vision OCR
+      extraction.py        # Text extraction (PDF/DOCX/DOC/images) with vision OCR
       classifier.py        # Auto-categorization of documents by content
       pricing.py           # Live Bedrock pricing from AWS bulk JSON
       db.py                # Postgres connection and schema setup

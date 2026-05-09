@@ -37,7 +37,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".jpg", ".jpeg", ".png", ".tiff", ".tif"}
 
 # Thread pool for CPU-bound work (PDF parsing, image rendering)
 _pool = ThreadPoolExecutor(max_workers=4)
@@ -86,20 +86,33 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file type: {ext}. Supported: {sorted(SUPPORTED_EXTENSIONS)}")
 
+    original_name = file.filename or f"file{ext}"
+
+    # Read file content and check for duplicates by content hash
+    import hashlib
+
+    content = await file.read()
+    content_hash = hashlib.sha256(content).hexdigest()
+
+    existing = store.find_by_hash(content_hash)
+    if existing:
+        raise ValueError(
+            f"Duplicate: this file is identical to '{existing.title}' "
+            f"(already uploaded as {existing.document_id})"
+        )
+
     document_id = store.new_id("doc")
     job_id = store.new_job_id("ingest")
-    original_name = file.filename or f"{document_id}{ext}"
     safe_name = _sanitize_filename(original_name)
     destination = os.path.join(store.upload_dir, f"{document_id}_{safe_name}")
 
     # Save the raw file
-    content = await file.read()
     with open(destination, "wb") as f:
         f.write(content)
 
     # Extract text and chunk it (in a thread so we don't block the event loop)
     loop = asyncio.get_event_loop()
-    text = await loop.run_in_executor(_pool, extract_text, destination)
+    text, processing_log = await loop.run_in_executor(_pool, extract_text, destination)
     chunks = await loop.run_in_executor(_pool, chunk_text, text)
 
     # Figure out what kind of document this is
@@ -117,6 +130,7 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
             tags=tags,
             status="indexed" if chunks else "empty",
         ),
+        content_hash=content_hash,
     )
 
     store.set_chunks(
@@ -170,7 +184,7 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
     except Exception as e:
         logger.warning("BookStack push failed (non-fatal): %s", e)
 
-    return UploadResponse(document_id=document_id, job_id=job_id)
+    return UploadResponse(document_id=document_id, job_id=job_id, processing_log=processing_log)
 
 
 # ---------------------------------------------------------------------------

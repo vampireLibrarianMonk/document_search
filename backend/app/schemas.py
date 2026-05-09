@@ -61,6 +61,7 @@ class AskResponse(BaseModel):
 class UploadResponse(BaseModel):
     document_id: str
     job_id: str
+    processing_log: list[str] = []
 
 
 class BulkUploadResponse(BaseModel):

@@ -18,9 +18,12 @@ When you upload a document, the app automatically reads the content (including s
 4. Documents are automatically categorized (Closing Documents, HOA Governance, Insurance, etc.) and appear in the list at the bottom
 5. Each document is also pushed to BookStack, organized by category
 
+You can select multiple folders before uploading. Each selection accumulates, so pick folder A, then folder B, then hit Upload to process everything in one batch.
+
 ### Managing Documents
 
 - Click any document title to open or download the original file
+- Click the 👁 icon to view the full extracted text inline (scrollable, collapsible)
 - Click the "x" button next to any document to delete it (removes from search index, database, and BookStack)
 - Click "Clear All" to wipe everything and start fresh
 - Documents are grouped by category with collapsible sections
@@ -84,7 +87,8 @@ When you are ready to move to Confluence Cloud, the connector is built and ready
 ### Supported File Types
 
 - PDF (.pdf) including scanned documents
-- Word documents (.docx)
+- Word documents (.docx, .doc) including inline images
+- Images (.jpg, .jpeg, .png, .tiff, .tif) processed via vision OCR
 - Plain text (.txt)
 - Markdown (.md)
 
