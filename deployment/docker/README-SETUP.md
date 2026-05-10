@@ -4,12 +4,12 @@ How to build and stand up the Docker Compose stack from scratch.
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Docker | 24+ | https://docs.docker.com/get-docker/ |
-| Docker Compose | v2+ | Included with Docker Desktop |
-| mkcert | any | `sudo apt install mkcert libnss3-tools` (HTTPS only) |
-| AWS credentials | - | `~/.aws/credentials` with Bedrock access |
+| Tool            | Version | Install                                              |
+| --------------- | ------- | ---------------------------------------------------- |
+| Docker          | 24+     | https://docs.docker.com/get-docker/                  |
+| Docker Compose  | v2+     | Included with Docker Desktop                         |
+| mkcert          | any     | `sudo apt install mkcert libnss3-tools` (HTTPS only) |
+| AWS credentials | -       | `~/.aws/credentials` with Bedrock access             |
 
 ## Initial Setup
 
@@ -27,6 +27,7 @@ make build
 ```
 
 This builds:
+
 - `document-search-api` (Python 3.10 + FastAPI + Pandoc + Playwright + Chromium)
 - `document-search-frontend` (Node build + Nginx)
 
@@ -37,6 +38,7 @@ make up
 ```
 
 Services started:
+
 - Frontend (port 5173)
 - Backend API (port 8000)
 - Background worker
@@ -117,6 +119,7 @@ docker compose -f deployment/docker/docker-compose.yml up --build -d api
 ## Data Persistence
 
 Data is stored in Docker named volumes:
+
 - `postgres_data` - document metadata, chunks, usage
 - `opensearch_data` - search index
 - `api_data` - uploaded files
@@ -132,10 +135,10 @@ docker volume rm $(docker volume ls -q | grep compose_)
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Port already in use | Stop other services on 5173/8000/9200/5432/6875 |
-| API can't reach Postgres | Wait 10s after `make up`, Postgres needs to initialize |
-| HTTPS cert not trusted | Run `mkcert -install` and restart browser |
-| BookStack shows 500 | Delete bookstack volumes and restart: `docker volume rm compose_bookstack_data compose_bookstack_db_data` |
-| Upload fails with NUL error | Fixed in code, rebuild API image |
+| Problem                     | Fix                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Port already in use         | Stop other services on 5173/8000/9200/5432/6875                                                           |
+| API can't reach Postgres    | Wait 10s after `make up`, Postgres needs to initialize                                                    |
+| HTTPS cert not trusted      | Run `mkcert -install` and restart browser                                                                 |
+| BookStack shows 500         | Delete bookstack volumes and restart: `docker volume rm compose_bookstack_data compose_bookstack_db_data` |
+| Upload fails with NUL error | Fixed in code, rebuild API image                                                                          |

@@ -301,7 +301,6 @@ render-diagrams:
 
 5. **Large diagrams**. If you hit size limits, set `PLANTUML_LIMIT_SIZE=8192` as an environment variable.
 
-
 ## Generating PlantUML from a Repo Using Bedrock
 
 The real power for gitops-summary is not hand-writing `.puml` files but having Bedrock analyze a repo and generate the diagrams automatically. Here is the pattern.

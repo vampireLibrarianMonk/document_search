@@ -19,28 +19,28 @@ Markdown files (.md)
 
 ### Source Files
 
-| File | Purpose |
-|------|---------|
-| `documentation/test/images/export_markdown_to_png.py` | Main script: MD→PNG→ODT pipeline |
-| `documentation/test/images/export_format_rest.css` | CSS for test spec rendering (dark mode) |
-| `documentation/test/images/export_format_tm.css` | CSS for traceability matrix rendering |
-| `pandoc.css` | General pandoc dark-mode stylesheet |
+| File                                                  | Purpose                                 |
+| ----------------------------------------------------- | --------------------------------------- |
+| `documentation/test/images/export_markdown_to_png.py` | Main script: MD→PNG→ODT pipeline        |
+| `documentation/test/images/export_format_rest.css`    | CSS for test spec rendering (dark mode) |
+| `documentation/test/images/export_format_tm.css`      | CSS for traceability matrix rendering   |
+| `pandoc.css`                                          | General pandoc dark-mode stylesheet     |
 
 ### Current Dependencies
 
-| Package | Role |
-|---------|------|
-| `markdown` | Markdown → HTML conversion |
-| `odfpy` | Build OpenDocument Text programmatically |
-| `Pillow` | Image manipulation (split traceability matrix PNG) |
-| `playwright` | Headless Chromium for HTML → PNG screenshot |
+| Package      | Role                                               |
+| ------------ | -------------------------------------------------- |
+| `markdown`   | Markdown → HTML conversion                         |
+| `odfpy`      | Build OpenDocument Text programmatically           |
+| `Pillow`     | Image manipulation (split traceability matrix PNG) |
+| `playwright` | Headless Chromium for HTML → PNG screenshot        |
 
 ### External Tools Required
 
-| Tool | Role |
-|------|------|
-| LibreOffice (headless) | `.odt` → `.docx` conversion |
-| Chromium (via Playwright) | HTML rendering engine |
+| Tool                      | Role                        |
+| ------------------------- | --------------------------- |
+| LibreOffice (headless)    | `.odt` → `.docx` conversion |
+| Chromium (via Playwright) | HTML rendering engine       |
 
 ### Features
 
@@ -66,13 +66,13 @@ Markdown files (.md)
 
 ### Additional Tools
 
-| Package / Tool | Role | Install |
-|----------------|------|---------|
-| **Pandoc** | Universal document converter (MD → DOCX, PDF, HTML, EPUB) | `sudo apt install pandoc` or [pandoc.org](https://pandoc.org/installing.html) |
-| **python-docx** | Programmatic DOCX creation/manipulation in Python | `pip install python-docx` |
-| **Sphinx** | Documentation generator with cross-referencing, TOC trees, and multi-format output (HTML, PDF, EPUB, man pages) | `pip install sphinx` |
-| **MyST-Parser** | Sphinx extension enabling Markdown (instead of RST) as source | `pip install myst-parser` |
-| **sphinx-rtd-theme** | Read the Docs theme for professional HTML output | `pip install sphinx-rtd-theme` |
+| Package / Tool       | Role                                                                                                            | Install                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Pandoc**           | Universal document converter (MD → DOCX, PDF, HTML, EPUB)                                                       | `sudo apt install pandoc` or [pandoc.org](https://pandoc.org/installing.html) |
+| **python-docx**      | Programmatic DOCX creation/manipulation in Python                                                               | `pip install python-docx`                                                     |
+| **Sphinx**           | Documentation generator with cross-referencing, TOC trees, and multi-format output (HTML, PDF, EPUB, man pages) | `pip install sphinx`                                                          |
+| **MyST-Parser**      | Sphinx extension enabling Markdown (instead of RST) as source                                                   | `pip install myst-parser`                                                     |
+| **sphinx-rtd-theme** | Read the Docs theme for professional HTML output                                                                | `pip install sphinx-rtd-theme`                                                |
 
 ### Pandoc-Based Approach (Simplest)
 
@@ -94,6 +94,7 @@ pandoc \
 ```
 
 **Advantages over current approach:**
+
 - Searchable, selectable text in output
 - Native Word styles, headings, and TOC
 - Custom styling via `--reference-doc` template
@@ -132,6 +133,7 @@ docs/
 ```
 
 **Advantages:**
+
 - Cross-references between documents
 - Auto-generated index and search
 - Multi-format output from single source
@@ -142,13 +144,13 @@ docs/
 
 ## 3. Recommended Strategy
 
-| Goal | Recommended Tool |
-|------|-----------------|
-| Quick single-document export (MD → DOCX) | Pandoc |
-| Aggregated test report with TOC (current use case) | Pandoc with `--toc` and `--reference-doc` |
-| Programmatic report generation from Django data | python-docx |
-| Full project documentation site + multi-format export | Sphinx + MyST-Parser |
-| Retain current PNG-based visual fidelity | Keep existing Playwright pipeline |
+| Goal                                                  | Recommended Tool                          |
+| ----------------------------------------------------- | ----------------------------------------- |
+| Quick single-document export (MD → DOCX)              | Pandoc                                    |
+| Aggregated test report with TOC (current use case)    | Pandoc with `--toc` and `--reference-doc` |
+| Programmatic report generation from Django data       | python-docx                               |
+| Full project documentation site + multi-format export | Sphinx + MyST-Parser                      |
+| Retain current PNG-based visual fidelity              | Keep existing Playwright pipeline         |
 
 ### Migration Path
 
@@ -178,37 +180,37 @@ RangeRingOutput / Trajectory Data
 
 ### Source Files
 
-| File | Purpose |
-|------|---------|
-| `app/exports/png.py` → `render_svg_with_template()` | Main SVG rendering engine for range-ring tools (~340 lines) |
-| `app/exports/pdf.py` → `export_to_pdf_bytes()` | SVG → PDF conversion via CairoSVG (with reportlab fallback) |
-| `app/templates/output-template.svg` | IC-style product layout template (1400×900px, header/map/legend/metadata) |
-| `app/ui/tools/shared.py` → `_cached_svg_export()` | Streamlit-cached SVG generation for reuse by PNG and PDF exports |
-| `app/ui/tools/launch_trajectory/ui.py` → `_render_trajectory_svg_with_template()` | Trajectory-specific SVG rendering variant |
-| `app/ui/command/shared_command_utils.py` | Command Center SVG→PNG/PDF export path |
+| File                                                                              | Purpose                                                                   |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `app/exports/png.py` → `render_svg_with_template()`                               | Main SVG rendering engine for range-ring tools (~340 lines)               |
+| `app/exports/pdf.py` → `export_to_pdf_bytes()`                                    | SVG → PDF conversion via CairoSVG (with reportlab fallback)               |
+| `app/templates/output-template.svg`                                               | IC-style product layout template (1400×900px, header/map/legend/metadata) |
+| `app/ui/tools/shared.py` → `_cached_svg_export()`                                 | Streamlit-cached SVG generation for reuse by PNG and PDF exports          |
+| `app/ui/tools/launch_trajectory/ui.py` → `_render_trajectory_svg_with_template()` | Trajectory-specific SVG rendering variant                                 |
+| `app/ui/command/shared_command_utils.py`                                          | Command Center SVG→PNG/PDF export path                                    |
 
 ### SVG Template Structure (`output-template.svg`)
 
 The template is a 1400×900 SVG with stable element IDs for programmatic substitution:
 
-| Element ID | Content |
-|------------|---------|
-| `product_title_line1` / `line2` | Dynamic title and subtitle |
-| `classification_top_right` / `bottom_left` | Classification banners |
-| `created_by`, `source_line1`, `source_line2` | Attribution metadata |
-| `map_image` | Base64-encoded map PNG (main content area: 1336×676px) |
-| `legend_items_container` | Dynamically generated multi-item legend (expands upward) |
-| `coordinate_line1` / `line2` | Projection and datum info |
-| `attribution_text` | Data source attribution |
+| Element ID                                   | Content                                                  |
+| -------------------------------------------- | -------------------------------------------------------- |
+| `product_title_line1` / `line2`              | Dynamic title and subtitle                               |
+| `classification_top_right` / `bottom_left`   | Classification banners                                   |
+| `created_by`, `source_line1`, `source_line2` | Attribution metadata                                     |
+| `map_image`                                  | Base64-encoded map PNG (main content area: 1336×676px)   |
+| `legend_items_container`                     | Dynamically generated multi-item legend (expands upward) |
+| `coordinate_line1` / `line2`                 | Projection and datum info                                |
+| `attribution_text`                           | Data source attribution                                  |
 
 ### Dependencies
 
-| Package | Version | Role |
-|---------|---------|------|
-| `CairoSVG` | 2.8.2 | SVG → PNG and SVG → PDF rasterization |
-| `cairocffi` | 1.7.1 | Cairo bindings (CairoSVG backend) |
-| `reportlab` | 4.4.9 | Fallback PDF generation if CairoSVG unavailable |
-| `simplekml` | 1.3.6 | KMZ export (parallel export path) |
+| Package     | Version | Role                                            |
+| ----------- | ------- | ----------------------------------------------- |
+| `CairoSVG`  | 2.8.2   | SVG → PNG and SVG → PDF rasterization           |
+| `cairocffi` | 1.7.1   | Cairo bindings (CairoSVG backend)               |
+| `reportlab` | 4.4.9   | Fallback PDF generation if CairoSVG unavailable |
+| `simplekml` | 1.3.6   | KMZ export (parallel export path)               |
 
 ### Key Design Patterns
 
@@ -220,10 +222,10 @@ The template is a 1400×900 SVG with stable element IDs for programmatic substit
 
 ### Applicability to This Project
 
-| ORRG Pattern | Potential Reuse |
-|--------------|-----------------|
-| SVG template with stable IDs + string substitution | Any report needing branded/structured layout with dynamic content |
-| CairoSVG for SVG → PNG/PDF | Lightweight alternative to Playwright for vector-to-raster conversion |
-| Base64 image embedding in SVG | Embedding charts, maps, or screenshots in templated documents |
-| ElementTree for dynamic SVG manipulation | Programmatic legend/table/diagram generation |
-| Cached export pipeline | Streamlit or web apps needing on-demand document generation without re-computation |
+| ORRG Pattern                                       | Potential Reuse                                                                    |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| SVG template with stable IDs + string substitution | Any report needing branded/structured layout with dynamic content                  |
+| CairoSVG for SVG → PNG/PDF                         | Lightweight alternative to Playwright for vector-to-raster conversion              |
+| Base64 image embedding in SVG                      | Embedding charts, maps, or screenshots in templated documents                      |
+| ElementTree for dynamic SVG manipulation           | Programmatic legend/table/diagram generation                                       |
+| Cached export pipeline                             | Streamlit or web apps needing on-demand document generation without re-computation |

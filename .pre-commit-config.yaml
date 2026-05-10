@@ -82,6 +82,7 @@ repos:
         exclude: (?x)^(
           .pre-commit-config.yaml|
           mkdocs.yml|
+          deployment/kubernetes/helm/document-search/templates/.*|
           .*.py
           )$
 
@@ -127,6 +128,7 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        exclude: deployment/kubernetes/helm/.*|frontend/src/main.ts|.secrets.baseline
 
   # flake8:
   # Python linter enforcing style and catching issues.

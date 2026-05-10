@@ -39,33 +39,33 @@ User prompt
 
 ## Generation Paths
 
-| Output | Primary Path | Fallback | Dependencies |
-|--------|-------------|----------|--------------|
-| Markdown (.md) | Bedrock returns MD directly | - | None |
-| Word (.docx) | python-docx with styled headings, bullets, form fields | Pandoc fallback | python-docx |
-| PDF (.pdf) | Pandoc via weasyprint | CairoSVG from SVG template, or Playwright screenshot | pandoc, weasyprint |
-| Image (.png) | MD → styled HTML + CSS → Playwright screenshot | CairoSVG from SVG template | playwright, markdown |
-| PowerPoint (.pptx) | python-pptx with navy/white theme, title slide, content slides | Pandoc fallback | python-pptx |
-| SVG (templated) | SVG template with stable IDs + string substitution | - | cairosvg, xml.etree |
+| Output             | Primary Path                                                   | Fallback                                             | Dependencies         |
+| ------------------ | -------------------------------------------------------------- | ---------------------------------------------------- | -------------------- |
+| Markdown (.md)     | Bedrock returns MD directly                                    | -                                                    | None                 |
+| Word (.docx)       | python-docx with styled headings, bullets, form fields         | Pandoc fallback                                      | python-docx          |
+| PDF (.pdf)         | Pandoc via weasyprint                                          | CairoSVG from SVG template, or Playwright screenshot | pandoc, weasyprint   |
+| Image (.png)       | MD → styled HTML + CSS → Playwright screenshot                 | CairoSVG from SVG template                           | playwright, markdown |
+| PowerPoint (.pptx) | python-pptx with navy/white theme, title slide, content slides | Pandoc fallback                                      | python-pptx          |
+| SVG (templated)    | SVG template with stable IDs + string substitution             | -                                                    | cairosvg, xml.etree  |
 
 ## Dependencies
 
 ### Python Packages
 
-| Package | Role | Already Installed |
-|---------|------|-------------------|
-| `python-docx` | Programmatic DOCX creation/manipulation | Yes |
-| `markdown` | Markdown to HTML conversion | No |
-| `playwright` | Headless Chromium for HTML to PNG | No |
-| `cairosvg` | SVG to PNG/PDF rasterization | No |
-| `weasyprint` | HTML to PDF without LaTeX | No |
-| `odfpy` | ODT generation (fallback) | No |
+| Package       | Role                                    | Already Installed |
+| ------------- | --------------------------------------- | ----------------- |
+| `python-docx` | Programmatic DOCX creation/manipulation | Yes               |
+| `markdown`    | Markdown to HTML conversion             | No                |
+| `playwright`  | Headless Chromium for HTML to PNG       | No                |
+| `cairosvg`    | SVG to PNG/PDF rasterization            | No                |
+| `weasyprint`  | HTML to PDF without LaTeX               | No                |
+| `odfpy`       | ODT generation (fallback)               | No                |
 
 ### System Packages
 
-| Tool | Role | Install |
-|------|------|---------|
-| Pandoc | Universal document converter | `sudo apt install pandoc` |
+| Tool     | Role                              | Install                       |
+| -------- | --------------------------------- | ----------------------------- |
+| Pandoc   | Universal document converter      | `sudo apt install pandoc`     |
 | Chromium | Rendering engine (via Playwright) | `playwright install chromium` |
 
 ## Design Patterns (from Reference Document)
@@ -155,6 +155,7 @@ Response: File download (binary)
 ### New Module: `app/generator.py`
 
 Responsibilities:
+
 - Retrieve relevant chunks (reuse search logic from services.py)
 - Build generation prompt with retrieved context
 - Call Bedrock Converse API with document-writing system prompt
@@ -224,50 +225,56 @@ Rules:
 Use these prompts to verify each format works correctly after implementation:
 
 ### Markdown Test
+
 **Prompt:** "Create a one-page summary of all HOA fence and shed rules including height limits, approval requirements, and who to contact."
 **Expected:** A clean markdown file with headings, bullet points, and citations from the architectural guidelines and CC&Rs.
 
 ### Image (PNG) Test
+
 **Prompt:** "Create a quick-reference card of the HOA architectural review board submission process, including what documents are needed and the timeline."
 **Expected:** A styled, readable PNG image suitable for printing or sharing, with the ARB steps laid out clearly.
 
 ### PDF Test
+
 **Prompt:** "Generate a multi-page report summarizing all closing costs and fees from my house purchase, organized by category with totals."
 **Expected:** A PDF with a table of contents, sections for each fee category (title, escrow, recording, etc.), and dollar amounts pulled from the closing disclosure and TRID fee schedule.
 
 ### Word (DOCX) Test
+
 **Prompt:** "Write a letter to my HOA requesting approval for a 5-foot privacy fence in my backyard. Include the relevant rules I need to reference and the submission address."
 **Expected:** A properly formatted Word document with letterhead-style layout, the request body citing specific HOA rules, and the ARB mailing address from the architectural guidelines.
 
 **Alpha Loop (style iteration):**
 
-| Iteration | What to check | How to improve |
-|---|---|---|
-| 1. Structure | Are headings, paragraphs, and bullets correct? | Adjust markdown parsing in `convert_to_docx` |
-| 2. Typography | Are fonts, sizes, and colors professional? | Tweak Pt sizes and RGBColor values in the style setup |
-| 3. Spacing | Is there enough whitespace between sections? | Adjust `space_before`/`space_after` on paragraph formats |
-| 4. Bold/forms | Are form fields (___) and bold (**text**) rendered? | Check `_add_rich_text` and signature line handling |
-| 5. PDF match | Does the PDF look consistent with the DOCX? | Align the weasyprint CSS with the python-docx styles |
+| Iteration     | What to check                                          | How to improve                                           |
+| ------------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| 1. Structure  | Are headings, paragraphs, and bullets correct?         | Adjust markdown parsing in `convert_to_docx`             |
+| 2. Typography | Are fonts, sizes, and colors professional?             | Tweak Pt sizes and RGBColor values in the style setup    |
+| 3. Spacing    | Is there enough whitespace between sections?           | Adjust `space_before`/`space_after` on paragraph formats |
+| 4. Bold/forms | Are form fields (\_\_\_) and bold (**text**) rendered? | Check `_add_rich_text` and signature line handling       |
+| 5. PDF match  | Does the PDF look consistent with the DOCX?            | Align the weasyprint CSS with the python-docx styles     |
 
 **Pipeline:** Markdown → python-docx (styled DOCX) → weasyprint (styled PDF with matching CSS)
 
 ### PowerPoint (PPTX) Test
+
 **Prompt:** "Create a 5-slide presentation explaining the HOA rules and regulations for new homeowners, covering architectural changes, assessments, meeting schedule, and contact information."
 **Expected:** A PPTX with title slide, one slide per topic, bullet points with key rules, and a final slide with contact info pulled from the resale certificate and bylaws.
 
 **Alpha Loop (style iteration):**
 
-| Iteration | What to check | How to improve |
-|---|---|---|
-| 1. Plain output | Does Pandoc produce valid slides with correct structure? | Verify heading-to-slide mapping works |
-| 2. Content quality | Are bullets concise (4-6 per slide)? Is data accurate? | Adjust the PPTX format instructions in the system prompt |
-| 3. Template styling | Are colors, fonts, backgrounds applied? | Edit `backend/templates/presentation.pptx` master slides |
-| 4. Layout fit | Does content overflow slides? Are titles truncated? | Tighten the "keep bullets short" instruction, adjust max_tokens |
-| 5. Final polish | Does it look professional enough to present? | Refine template: add logo placeholder, footer, slide numbers |
+| Iteration           | What to check                                            | How to improve                                                  |
+| ------------------- | -------------------------------------------------------- | --------------------------------------------------------------- |
+| 1. Plain output     | Does Pandoc produce valid slides with correct structure? | Verify heading-to-slide mapping works                           |
+| 2. Content quality  | Are bullets concise (4-6 per slide)? Is data accurate?   | Adjust the PPTX format instructions in the system prompt        |
+| 3. Template styling | Are colors, fonts, backgrounds applied?                  | Edit `backend/templates/presentation.pptx` master slides        |
+| 4. Layout fit       | Does content overflow slides? Are titles truncated?      | Tighten the "keep bullets short" instruction, adjust max_tokens |
+| 5. Final polish     | Does it look professional enough to present?             | Refine template: add logo placeholder, footer, slide numbers    |
 
 **Template location:** `backend/templates/presentation.pptx`
 **To iterate on style:** Open the template in PowerPoint/LibreOffice, modify the slide masters (colors, fonts, backgrounds), save, and regenerate. Pandoc applies the template's theme to all generated content.
 
 ### Form Generation Test
+
 **Prompt:** "Fill out an exterior modification application for a roof replacement. Use my address and the HOA's architectural review board submission requirements. Include the neighbor signature section."
 **Expected:** A document (DOCX or PDF) that resembles the Centerpointe Exterior Modification Application form, pre-filled with the property address (12133 Tribune St), the ARB mailing address (Select Community Services, 4840 Westfields Blvd, Suite 100, Chantilly, VA 20151), the modification description for a roof replacement, and the neighbor acknowledgment section ready for signatures.

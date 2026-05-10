@@ -19,13 +19,13 @@ api:
     POSTGRES_HOST: postgres
     POSTGRES_PORT: "5432"
     POSTGRES_USER: docsearch
-    POSTGRES_PASSWORD: docsearch_local
+    POSTGRES_PASSWORD: docsearch_local # pragma: allowlist secret
     POSTGRES_DB: docsearch
     OPENSEARCH_HOST: opensearch
     OPENSEARCH_PORT: "9200"
     BOOKSTACK_URL: http://bookstack:80
     BOOKSTACK_TOKEN_ID: "6RhZEKtP0Py4yS4sMSHy5Q6JGXXqxPkk"
-    BOOKSTACK_TOKEN_SECRET: "DF5357SIdbOK8MMpmYR7YmwsCMMg9PJw"
+    BOOKSTACK_TOKEN_SECRET: "DF5357SIdbOK8MMpmYR7YmwsCMMg9PJw" # pragma: allowlist secret
   resources:
     requests:
       memory: 256Mi
@@ -53,7 +53,7 @@ postgres:
   storage: 5Gi
   env:
     POSTGRES_USER: docsearch
-    POSTGRES_PASSWORD: docsearch_local
+    POSTGRES_PASSWORD: docsearch_local # pragma: allowlist secret
     POSTGRES_DB: docsearch
 
 # OpenSearch
@@ -74,7 +74,7 @@ minio:
   storage: 5Gi
   env:
     MINIO_ROOT_USER: minioadmin
-    MINIO_ROOT_PASSWORD: minioadmin
+    MINIO_ROOT_PASSWORD: minioadmin # pragma: allowlist secret
 
 # BookStack
 bookstack:
@@ -86,7 +86,7 @@ bookstack:
     DB_HOST: bookstack-db
     DB_PORT: "3306"
     DB_USERNAME: bookstack
-    DB_PASSWORD: bookstack_local
+    DB_PASSWORD: bookstack_local # pragma: allowlist secret
     DB_DATABASE: bookstack
 
 bookstackDb:
@@ -94,10 +94,10 @@ bookstackDb:
   port: 3306
   storage: 2Gi
   env:
-    MYSQL_ROOT_PASSWORD: bookstack_root
+    MYSQL_ROOT_PASSWORD: bookstack_root # pragma: allowlist secret
     MYSQL_DATABASE: bookstack
     MYSQL_USER: bookstack
-    MYSQL_PASSWORD: bookstack_local
+    MYSQL_PASSWORD: bookstack_local # pragma: allowlist secret
 
 # Ingress
 ingress:

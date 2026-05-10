@@ -97,8 +97,7 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
     existing = store.find_by_hash(content_hash)
     if existing:
         raise ValueError(
-            f"Duplicate: this file is identical to '{existing.title}' "
-            f"(already uploaded as {existing.document_id})"
+            f"Duplicate: this file is identical to '{existing.title}' " f"(already uploaded as {existing.document_id})",
         )
 
     document_id = store.new_id("doc")
@@ -413,10 +412,7 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
             )
     except Exception as e:
         logger.warning("Bedrock call failed: %s", e)
-        answer = (
-            "I found relevant documents but could not generate an AI answer right now. "
-            "See the citations below."
-        )
+        answer = "I found relevant documents but could not generate an AI answer right now. " "See the citations below."
 
     return AskResponse(
         answer=answer,

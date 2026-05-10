@@ -105,13 +105,13 @@ Click the "Create" tab to generate new documents from your indexed content.
 
 ### Output Formats
 
-| Format | What you get |
-|--------|-------------|
-| Markdown (.md) | Clean text with headings and bullets |
-| Word (.docx) | Styled document with Calibri font, proper headings, bullet points, and form fields |
-| PDF (.pdf) | Formatted report suitable for printing or sharing |
-| Image (.png) | Single-page visual reference card |
-| PowerPoint (.pptx) | Presentation with navy/white theme, title slide, content slides with bullets |
+| Format             | What you get                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| Markdown (.md)     | Clean text with headings and bullets                                               |
+| Word (.docx)       | Styled document with Calibri font, proper headings, bullet points, and form fields |
+| PDF (.pdf)         | Formatted report suitable for printing or sharing                                  |
+| Image (.png)       | Single-page visual reference card                                                  |
+| PowerPoint (.pptx) | Presentation with navy/white theme, title slide, content slides with bullets       |
 
 ### How It Works
 

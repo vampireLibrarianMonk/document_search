@@ -101,7 +101,8 @@ def get_cluster_health() -> dict:
                         pvc_name = vol.persistent_volume_claim.claim_name
                         try:
                             pvc = v1.read_namespaced_persistent_volume_claim(
-                                pvc_name, namespace
+                                pvc_name,
+                                namespace,
                             )
                             storage = pvc.spec.resources.requests.get("storage", "")
                             disk = f"{pvc_name} ({storage})"
@@ -122,7 +123,7 @@ def get_cluster_health() -> dict:
                     "memory": mem_req,
                     "disk": disk,
                     "node": pod.spec.node_name or "",
-                }
+                },
             )
 
         # Get events for each pod (only for the current pod name)
@@ -147,14 +148,16 @@ def get_cluster_health() -> dict:
                                 "type": ev.type or "",
                                 "reason": ev.reason or "",
                                 "message": (ev.message or "")[:120],
-                            }
+                            },
                         )
                 # Most recent first, limit to 20
                 p["events"] = sorted(
-                    pod_events, key=lambda x: x["time"], reverse=True
+                    pod_events,
+                    key=lambda x: x["time"],
+                    reverse=True,
                 )[:20]
         except Exception:
-            pass
+            pass  # nosec B110
 
         # Try to get metrics (requires metrics-server)
         try:
@@ -171,23 +174,31 @@ def get_cluster_health() -> dict:
                     if p["name"] == pod_name:
                         containers = item.get("containers", [])
                         if containers:
-                            p["cpu_usage"] = containers[0].get("usage", {}).get(
-                                "cpu", ""
+                            p["cpu_usage"] = (
+                                containers[0]
+                                .get("usage", {})
+                                .get(
+                                    "cpu",
+                                    "",
+                                )
                             )
-                            p["memory_usage"] = containers[0].get("usage", {}).get(
-                                "memory", ""
+                            p["memory_usage"] = (
+                                containers[0]
+                                .get("usage", {})
+                                .get(
+                                    "memory",
+                                    "",
+                                )
                             )
         except Exception:
-            pass  # metrics-server may not be available
+            pass  # nosec B110 - metrics-server may not be available
 
         # Summary
         summary = {
             "total": len(pod_list),
             "running": sum(1 for p in pod_list if p["status"] == "Running"),
             "pending": sum(1 for p in pod_list if p["status"] == "Pending"),
-            "failed": sum(
-                1 for p in pod_list if p["status"] in ("Failed", "CrashLoopBackOff")
-            ),
+            "failed": sum(1 for p in pod_list if p["status"] in ("Failed", "CrashLoopBackOff")),
         }
 
         return {"available": True, "pods": pod_list, "summary": summary}

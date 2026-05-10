@@ -13,9 +13,8 @@ Usage:
 from __future__ import annotations
 
 import json
-import time as _time
 import logging
-import re
+import time as _time
 from typing import Optional
 
 import requests
@@ -166,10 +165,7 @@ def _parse_pricing_json(
         if "input-tokens" not in usage and "output-tokens" not in usage:
             continue
         # Skip batch, flex, priority, latency-optimized variants
-        if any(
-            x in usage
-            for x in ["-batch", "-flex", "-priority", "-latency", "-cache", "-custom-model"]
-        ):
+        if any(x in usage for x in ["-batch", "-flex", "-priority", "-latency", "-cache", "-custom-model"]):
             continue
 
         # Get the price

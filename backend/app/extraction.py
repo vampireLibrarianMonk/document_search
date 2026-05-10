@@ -98,8 +98,8 @@ def _extract_page_image(page, page_num: int, path: str) -> str:
         # Track usage if enabled
         if os.getenv("TRACK_USAGE", "true").lower() == "true":
             usage = resp.get("usage", {})
-            from .pricing import estimate_cost
             from .db import get_conn
+            from .pricing import estimate_cost
 
             try:
                 cost = estimate_cost(
@@ -114,12 +114,17 @@ def _extract_page_image(page, page_num: int, path: str) -> str:
                         """INSERT INTO token_usage
                            (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
                            VALUES (%s, %s, %s, %s, %s)""",
-                        (model_id, "vision", usage.get("inputTokens", 0),
-                         usage.get("outputTokens", 0), cost),
+                        (
+                            model_id,
+                            "vision",
+                            usage.get("inputTokens", 0),
+                            usage.get("outputTokens", 0),
+                            cost,
+                        ),
                     )
                 conn.close()
             except Exception:
-                pass  # non-fatal
+                pass  # nosec B110  # nosec B110 - non-fatal, logged elsewhere
 
         logger.info(
             "Vision OCR extracted %d chars from page %d of %s",
@@ -219,13 +224,15 @@ def _extract_standalone_image(path: str) -> str:
         model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
         resp = _get_bedrock().converse(
             modelId=model_id,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
-                    {"text": "Extract all text from this document image. Return only the text content, no commentary."},
-                ],
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
+                        {"text": "Extract all text from this document image. Return only the text content, no commentary."},
+                    ],
+                },
+            ],
             inferenceConfig={"maxTokens": 4096},
         )
         text = resp["output"]["message"]["content"][0]["text"]
@@ -233,8 +240,8 @@ def _extract_standalone_image(path: str) -> str:
         # Track usage
         if os.getenv("TRACK_USAGE", "true").lower() == "true":
             usage = resp.get("usage", {})
-            from .pricing import estimate_cost
             from .db import get_conn
+            from .pricing import estimate_cost
 
             try:
                 cost = estimate_cost(
@@ -249,12 +256,17 @@ def _extract_standalone_image(path: str) -> str:
                         """INSERT INTO token_usage
                            (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
                            VALUES (%s, %s, %s, %s, %s)""",
-                        (model_id, "vision", usage.get("inputTokens", 0),
-                         usage.get("outputTokens", 0), cost),
+                        (
+                            model_id,
+                            "vision",
+                            usage.get("inputTokens", 0),
+                            usage.get("outputTokens", 0),
+                            cost,
+                        ),
                     )
                 conn.close()
             except Exception:
-                pass
+                pass  # nosec B110
 
         return text
     except Exception as e:
@@ -313,13 +325,15 @@ def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
 
                                     resp = _get_bedrock().converse(
                                         modelId=model_id,
-                                        messages=[{
-                                            "role": "user",
-                                            "content": [
-                                                {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
-                                                {"text": "Extract all text from this image. Return only the text, no commentary."},
-                                            ],
-                                        }],
+                                        messages=[
+                                            {
+                                                "role": "user",
+                                                "content": [
+                                                    {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
+                                                    {"text": "Extract all text from this image. Return only the text, no commentary."},
+                                                ],
+                                            },
+                                        ],
                                         inferenceConfig={"maxTokens": 4096},
                                     )
                                     ocr = resp["output"]["message"]["content"][0]["text"]
@@ -329,8 +343,9 @@ def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
                                     # Track usage
                                     if os.getenv("TRACK_USAGE", "true").lower() == "true":
                                         usage = resp.get("usage", {})
-                                        from .pricing import estimate_cost
                                         from .db import get_conn
+                                        from .pricing import estimate_cost
+
                                         try:
                                             cost = estimate_cost(
                                                 model_id,
@@ -344,12 +359,17 @@ def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
                                                     """INSERT INTO token_usage
                                                        (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
                                                        VALUES (%s, %s, %s, %s, %s)""",
-                                                    (model_id, "vision", usage.get("inputTokens", 0),
-                                                     usage.get("outputTokens", 0), cost),
+                                                    (
+                                                        model_id,
+                                                        "vision",
+                                                        usage.get("inputTokens", 0),
+                                                        usage.get("outputTokens", 0),
+                                                        cost,
+                                                    ),
                                                 )
                                             conn.close()
                                         except Exception:
-                                            pass
+                                            pass  # nosec B110
                                 else:
                                     log.append(f"Image {image_count}: skipped (no vision model configured)")
                             except Exception as e:

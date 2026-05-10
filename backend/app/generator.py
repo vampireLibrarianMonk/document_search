@@ -13,9 +13,6 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
-import tempfile
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +24,7 @@ _BASE_RULES = (
 )
 
 _FORMAT_INSTRUCTIONS = {
-    "md": (
-        "Structure the output as clean Markdown with proper headings (# ## ###), "
-        "bullet points, and paragraphs. Use bold for key terms."
-    ),
+    "md": ("Structure the output as clean Markdown with proper headings (# ## ###), " "bullet points, and paragraphs. Use bold for key terms."),
     "docx": (
         "Structure the output as a formal document with:\n"
         "- A clear title as a level-1 heading\n"
@@ -100,23 +94,16 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
     format_instruction = _FORMAT_INSTRUCTIONS.get(effective_fmt, _FORMAT_INSTRUCTIONS["md"])
 
     mode_intro = (
-        "The user has selected specific documents as source material. "
-        "Their prompt describes WHAT to create, not what to search for."
+        "The user has selected specific documents as source material. " "Their prompt describes WHAT to create, not what to search for."
         if manual_mode
         else "Your job is to create well-structured documents using ONLY the provided source material."
     )
 
     system_prompt = (
-        f"You are a professional document writer. {mode_intro}\n\n"
-        f"Output format instructions:\n{format_instruction}\n\n"
-        f"Rules:\n{_BASE_RULES}"
+        f"You are a professional document writer. {mode_intro}\n\n" f"Output format instructions:\n{format_instruction}\n\n" f"Rules:\n{_BASE_RULES}"
     )
 
-    user_msg = (
-        f"Source documents:\n{context}\n\n"
-        f"Request: {prompt}\n\n"
-        "Generate the document in Markdown format following the format instructions above."
-    )
+    user_msg = f"Source documents:\n{context}\n\n" f"Request: {prompt}\n\n" "Generate the document in Markdown format following the format instructions above."
 
     resp = client.converse(
         modelId=model_id,
@@ -131,8 +118,8 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
     if os.getenv("TRACK_USAGE", "true").lower() == "true":
         usage = resp.get("usage", {})
         try:
-            from .pricing import estimate_cost
             from .db import get_conn
+            from .pricing import estimate_cost
 
             cost = estimate_cost(
                 model_id,
@@ -146,23 +133,27 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
                     """INSERT INTO token_usage
                        (model_id, operation, input_tokens, output_tokens, estimated_cost_usd)
                        VALUES (%s, %s, %s, %s, %s)""",
-                    (model_id, "generate", usage.get("inputTokens", 0),
-                     usage.get("outputTokens", 0), cost),
+                    (
+                        model_id,
+                        "generate",
+                        usage.get("inputTokens", 0),
+                        usage.get("outputTokens", 0),
+                        cost,
+                    ),
                 )
             conn.close()
         except Exception:
-            pass
+            pass  # nosec B110
 
     return content
 
 
 def convert_to_docx(markdown_content: str) -> bytes:
     """Convert markdown to a styled DOCX using python-docx for full control."""
-    from docx import Document
-    from docx.shared import Pt, Inches, Cm, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.style import WD_STYLE_TYPE
     import io
+
+    from docx import Document
+    from docx.shared import Cm, Pt, RGBColor
 
     doc = Document()
 
@@ -240,6 +231,7 @@ def convert_to_docx(markdown_content: str) -> bytes:
 def _add_rich_text(paragraph, text: str):
     """Parse simple markdown bold (**text**) into Word runs."""
     import re
+
     parts = re.split(r"(\*\*[^*]+\*\*)", text)
     for part in parts:
         if part.startswith("**") and part.endswith("**"):
@@ -251,8 +243,6 @@ def _add_rich_text(paragraph, text: str):
 
 def convert_to_pdf(markdown_content: str) -> bytes:
     """Convert markdown to PDF via DOCX intermediate for consistent styling."""
-    # Generate styled DOCX first
-    docx_bytes = convert_to_docx(markdown_content)
 
     # Convert DOCX to PDF using weasyprint via HTML
     # (since LibreOffice may not be available in container)
@@ -310,11 +300,12 @@ def convert_to_png(markdown_content: str) -> bytes:
 
 def convert_to_pptx(markdown_content: str) -> bytes:
     """Convert markdown to a styled PPTX using python-pptx for full control."""
-    from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
     import io
+
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.util import Inches, Pt
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -325,7 +316,6 @@ def convert_to_pptx(markdown_content: str) -> bytes:
 
     # Colors
     NAVY = RGBColor(0x1A, 0x1A, 0x2E)
-    INDIGO = RGBColor(0x63, 0x66, 0xF1)
     GRAY = RGBColor(0x4B, 0x55, 0x63)
     LIGHT_BG = RGBColor(0xF8, 0xFA, 0xFC)
     WHITE = RGBColor(0xFF, 0xFF, 0xFF)
@@ -369,7 +359,11 @@ def convert_to_pptx(markdown_content: str) -> bytes:
 
             # Title bar
             title_bar = slide.shapes.add_shape(
-                1, Inches(0), Inches(0), prs.slide_width, Inches(1.2),
+                1,
+                Inches(0),
+                Inches(0),
+                prs.slide_width,
+                Inches(1.2),
             )
             title_bar.fill.solid()
             title_bar.fill.fore_color.rgb = NAVY
@@ -388,7 +382,10 @@ def convert_to_pptx(markdown_content: str) -> bytes:
             # Bullet points
             if slide_data.get("bullets"):
                 content_box = slide.shapes.add_textbox(
-                    Inches(1), Inches(1.6), Inches(11), Inches(5.2),
+                    Inches(1),
+                    Inches(1.6),
+                    Inches(11),
+                    Inches(5.2),
                 )
                 tf = content_box.text_frame
                 tf.word_wrap = True
@@ -406,7 +403,10 @@ def convert_to_pptx(markdown_content: str) -> bytes:
 
             # Slide number
             num_box = slide.shapes.add_textbox(
-                Inches(12.2), Inches(7), Inches(0.8), Inches(0.4),
+                Inches(12.2),
+                Inches(7),
+                Inches(0.8),
+                Inches(0.4),
             )
             num_tf = num_box.text_frame
             num_p = num_tf.paragraphs[0]

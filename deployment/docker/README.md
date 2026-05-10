@@ -4,12 +4,12 @@ Once the stack is running, here's how to use it.
 
 ## URLs
 
-| Service | HTTP | HTTPS |
-|---------|------|-------|
-| App | http://localhost:5173 | https://app.localhost |
-| API Docs | http://localhost:8000/docs | https://api.localhost/docs |
-| BookStack | http://localhost:6875 | - |
-| MinIO Console | http://localhost:9001 | - |
+| Service       | HTTP                       | HTTPS                      |
+| ------------- | -------------------------- | -------------------------- |
+| App           | http://localhost:5173      | https://app.localhost      |
+| API Docs      | http://localhost:8000/docs | https://api.localhost/docs |
+| BookStack     | http://localhost:6875      | -                          |
+| MinIO Console | http://localhost:9001      | -                          |
 
 ## Commands
 

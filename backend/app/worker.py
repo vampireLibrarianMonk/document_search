@@ -10,8 +10,6 @@ import asyncio
 import logging
 import os
 import signal
-import sys
-import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -104,7 +102,9 @@ async def poll_and_process():
     concurrency = get_concurrency()
     semaphore = asyncio.Semaphore(concurrency)
     logger.info(
-        "Worker started (concurrency=%d, pid=%d)", concurrency, os.getpid()
+        "Worker started (concurrency=%d, pid=%d)",
+        concurrency,
+        os.getpid(),
     )
 
     while not _shutdown:
@@ -137,7 +137,7 @@ async def poll_and_process():
                 # This worker handles jobs queued via the bulk/async path
                 # We'll need to store file_path in the jobs table
                 tasks.append(
-                    asyncio.create_task(process_job(job_id, "", ""))
+                    asyncio.create_task(process_job(job_id, "", "")),
                 )
 
             if tasks:

@@ -131,7 +131,8 @@ async def ingest_upload_stream(files: list[UploadFile] = File(...)):
             _conn = _get_conn()
             with _conn.cursor() as _cur:
                 _cur.execute(
-                    "SELECT status FROM jobs WHERE job_id = %s", (batch_job_id,)
+                    "SELECT status FROM jobs WHERE job_id = %s",
+                    (batch_job_id,),
                 )
                 _row = _cur.fetchone()
             _conn.close()
@@ -303,7 +304,7 @@ async def bookstack_sync() -> BulkUploadResponse:
 @app.post("/generate")
 def generate_document(body: dict):
     """Generate a document from a user prompt, grounded in indexed documents."""
-    from fastapi.responses import Response
+
     from .generator import generate_markdown
 
     prompt = body.get("prompt", "").strip()
@@ -331,9 +332,16 @@ def generate_document(body: dict):
                 context_parts.append(f"[{doc.title}]\n{text}")
     else:
         # Auto-search: retrieve relevant chunks (same as Ask AI)
-        search_result = run_search(store, SearchRequest(
-            query=prompt, mode="hybrid", filters=filters, page=1, page_size=top_k * 5,
-        ))
+        search_result = run_search(
+            store,
+            SearchRequest(
+                query=prompt,
+                mode="hybrid",
+                filters=filters,
+                page=1,
+                page_size=top_k * 5,
+            ),
+        )
 
         seen: dict[str, list] = {}
         for r in search_result.results:
@@ -391,19 +399,23 @@ def generate_detect_format(body: dict):
     try:
         resp = client.converse(
             modelId=model_id,
-            system=[{"text": (
-                "You detect the best output format for a document request. "
-                "Reply with EXACTLY this format: FORMAT|REASON\n"
-                "FORMAT must be one of: md, docx, pdf, png, pptx\n"
-                "REASON is 2-4 words explaining why.\n\n"
-                "Examples:\n"
-                "- 'Write a letter to my HOA' → docx|formal letter\n"
-                "- 'Create a presentation about rules' → pptx|slide deck\n"
-                "- 'Fill out the modification form' → docx|fillable form\n"
-                "- 'Make a quick reference card' → png|visual reference\n"
-                "- 'Generate a report with all fees' → pdf|formal report\n"
-                "- 'Summarize the bylaws' → md|text summary"
-            )}],
+            system=[
+                {
+                    "text": (
+                        "You detect the best output format for a document request. "
+                        "Reply with EXACTLY this format: FORMAT|REASON\n"
+                        "FORMAT must be one of: md, docx, pdf, png, pptx\n"
+                        "REASON is 2-4 words explaining why.\n\n"
+                        "Examples:\n"
+                        "- 'Write a letter to my HOA' → docx|formal letter\n"
+                        "- 'Create a presentation about rules' → pptx|slide deck\n"
+                        "- 'Fill out the modification form' → docx|fillable form\n"
+                        "- 'Make a quick reference card' → png|visual reference\n"
+                        "- 'Generate a report with all fees' → pdf|formal report\n"
+                        "- 'Summarize the bylaws' → md|text summary"
+                    ),
+                },
+            ],
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             inferenceConfig={"maxTokens": 20},
         )
@@ -425,7 +437,13 @@ def generate_detect_format(body: dict):
 def generate_convert(body: dict):
     """Convert previously generated markdown to a different format (no Bedrock call)."""
     import base64
-    from .generator import convert_to_docx, convert_to_pdf, convert_to_png, convert_to_pptx
+
+    from .generator import (
+        convert_to_docx,
+        convert_to_pdf,
+        convert_to_png,
+        convert_to_pptx,
+    )
 
     markdown = body.get("markdown", "")
     fmt = body.get("format", "md")
@@ -500,7 +518,6 @@ def delete_all_documents():
         _logger.warning("BookStack bulk cleanup failed: %s", e)
 
     # Clean up files on disk
-    import shutil
 
     upload_dir = store.upload_dir
     if os.path.isdir(upload_dir):
@@ -509,7 +526,7 @@ def delete_all_documents():
             try:
                 os.unlink(filepath)
             except Exception:
-                pass
+                pass  # nosec B110
 
     count = store.delete_all_documents()
     return {"deleted": count}
@@ -529,12 +546,20 @@ def admin_reindex():
     for doc in docs:
         chunks = store.get_chunks(doc.document_id)
         if chunks:
-            os_search.index_chunks(doc.document_id, doc.title, [
-                {"chunk_id": c.chunk_id, "content": c.content,
-                 "source_type": c.source_type, "document_type": c.document_type,
-                 "tags": c.tags}
-                for c in chunks
-            ])
+            os_search.index_chunks(
+                doc.document_id,
+                doc.title,
+                [
+                    {
+                        "chunk_id": c.chunk_id,
+                        "content": c.content,
+                        "source_type": c.source_type,
+                        "document_type": c.document_type,
+                        "tags": c.tags,
+                    }
+                    for c in chunks
+                ],
+            )
             indexed += 1
     return {"status": "completed", "indexed": indexed, "total": len(docs)}
 
@@ -548,7 +573,7 @@ def admin_usage():
 @app.get("/admin/pricing")
 def admin_pricing():
     """Get current Bedrock pricing for the configured region."""
-    from .pricing import fetch_pricing, US_REGIONS
+    from .pricing import US_REGIONS, fetch_pricing
 
     region = os.getenv("AWS_REGION", "us-east-1")
     prices = fetch_pricing(region)
@@ -653,7 +678,6 @@ def admin_health_check():
     try:
         doc_count = len(store.list_documents())
         os_count_resp = os_search.get_client().count(index=os_search.INDEX_NAME)
-        os_doc_ids = set()
         # Count unique document_ids in OpenSearch
         agg_resp = os_search.get_client().search(
             index=os_search.INDEX_NAME,
@@ -669,8 +693,7 @@ def admin_health_check():
         }
         if not in_sync:
             errors.append(
-                f"Search index out of sync: {doc_count} docs in database, "
-                f"{os_unique_docs} in search index. Click Reindex to fix."
+                f"Search index out of sync: {doc_count} docs in database, " f"{os_unique_docs} in search index. Click Reindex to fix.",
             )
     except Exception as e:
         checks["search_index"] = {"status": "error", "version": "unavailable"}
@@ -692,10 +715,12 @@ def admin_list_models():
         models = client.list_foundation_models()["modelSummaries"]
 
         # Only include active chat/text-generation models (not embedding, not image-gen)
-        skip_types = {"EMBEDDING", "IMAGE"}
         skip_prefixes = (
-            "stability.", "cohere.embed", "cohere.rerank",
-            "amazon.titan-embed", "amazon.titan-tg1",
+            "stability.",
+            "cohere.embed",
+            "cohere.rerank",
+            "amazon.titan-embed",
+            "amazon.titan-tg1",
             "twelvelabs.",
             "openai.gpt-oss-safeguard",
         )
@@ -761,28 +786,64 @@ def _model_tags(model_id: str, provider: str) -> str:
 
     # Cost tier ($ cheapest, $$ balanced, $$$ premium)
     cheap = [
-        "haiku", "nova-lite", "nova-micro", "nova-2-lite",
-        "llama3-8b", "llama3-1-8b", "llama3-2-1b", "llama3-2-3b",
-        "mistral-7b", "mixtral", "ministral-3-3b", "ministral-3-8b",
-        "gemma-3-4b", "voxtral-mini",
-        "jamba-1-5-mini", "nemotron-nano-9b",
-        "glm-4.7-flash", "gpt-oss-20b",
+        "haiku",
+        "nova-lite",
+        "nova-micro",
+        "nova-2-lite",
+        "llama3-8b",
+        "llama3-1-8b",
+        "llama3-2-1b",
+        "llama3-2-3b",
+        "mistral-7b",
+        "mixtral",
+        "ministral-3-3b",
+        "ministral-3-8b",
+        "gemma-3-4b",
+        "voxtral-mini",
+        "jamba-1-5-mini",
+        "nemotron-nano-9b",
+        "glm-4.7-flash",
+        "gpt-oss-20b",
     ]
     mid_tier = [
-        "sonnet", "nova-pro", "nova-2-pro",
-        "llama3-70b", "llama3-1-70b", "llama3-3-70b", "llama4-scout",
-        "mistral-small", "mistral-large", "magistral", "pixtral",
-        "ministral-3-14b", "devstral",
-        "gemma-3-12b", "gemma-3-27b",
-        "jamba-1-5-large", "nemotron-nano-12b", "nemotron-nano-3-30b",
-        "deepseek", "qwen3-32b", "qwen3-coder", "qwen3-next",
-        "palmyra-x4", "palmyra-x5", "palmyra-vision",
-        "glm-4.7", "glm-5", "gpt-oss-120b",
-        "minimax", "kimi", "voxtral-small",
+        "sonnet",
+        "nova-pro",
+        "nova-2-pro",
+        "llama3-70b",
+        "llama3-1-70b",
+        "llama3-3-70b",
+        "llama4-scout",
+        "mistral-small",
+        "mistral-large",
+        "magistral",
+        "pixtral",
+        "ministral-3-14b",
+        "devstral",
+        "gemma-3-12b",
+        "gemma-3-27b",
+        "jamba-1-5-large",
+        "nemotron-nano-12b",
+        "nemotron-nano-3-30b",
+        "deepseek",
+        "qwen3-32b",
+        "qwen3-coder",
+        "qwen3-next",
+        "palmyra-x4",
+        "palmyra-x5",
+        "palmyra-vision",
+        "glm-4.7",
+        "glm-5",
+        "gpt-oss-120b",
+        "minimax",
+        "kimi",
+        "voxtral-small",
     ]
     expensive = [
-        "opus", "nova-premier", "llama4-maverick",
-        "nemotron-super", "qwen3-vl-235b",
+        "opus",
+        "nova-premier",
+        "llama4-maverick",
+        "nemotron-super",
+        "qwen3-vl-235b",
     ]
 
     if any(x in mid for x in cheap):
@@ -794,10 +855,20 @@ def _model_tags(model_id: str, provider: str) -> str:
 
     # Speed
     fast = [
-        "haiku", "nova-micro", "nova-lite", "nova-2-lite",
-        "ministral-3-3b", "ministral-3-8b", "llama3-8b", "llama3-1-8b",
-        "gemma-3-4b", "voxtral-mini", "glm-4.7-flash",
-        "nemotron-nano-9b", "jamba-1-5-mini", "gpt-oss-20b",
+        "haiku",
+        "nova-micro",
+        "nova-lite",
+        "nova-2-lite",
+        "ministral-3-3b",
+        "ministral-3-8b",
+        "llama3-8b",
+        "llama3-1-8b",
+        "gemma-3-4b",
+        "voxtral-mini",
+        "glm-4.7-flash",
+        "nemotron-nano-9b",
+        "jamba-1-5-mini",
+        "gpt-oss-20b",
     ]
     slow = ["opus", "nova-premier", "llama4-maverick", "nemotron-super", "qwen3-vl-235b"]
 
@@ -825,7 +896,7 @@ def admin_cancel_upload():
     conn = get_conn()
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE jobs SET status = 'cancelled' WHERE status IN ('queued', 'processing')"
+            "UPDATE jobs SET status = 'cancelled' WHERE status IN ('queued', 'processing')",
         )
         count = cur.rowcount
     conn.close()

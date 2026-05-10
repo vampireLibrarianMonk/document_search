@@ -228,8 +228,14 @@ class PgStore:
                        (model_id, operation, input_tokens, output_tokens,
                         estimated_cost_usd, document_id)
                        VALUES (%s, %s, %s, %s, %s, %s)""",
-                    (model_id, operation, input_tokens, output_tokens,
-                     estimated_cost_usd, document_id),
+                    (
+                        model_id,
+                        operation,
+                        input_tokens,
+                        output_tokens,
+                        estimated_cost_usd,
+                        document_id,
+                    ),
                 )
         finally:
             conn.close()

@@ -4,10 +4,10 @@ Once the cluster is running, here's how to use it.
 
 ## URLs
 
-| Service | URL |
-|---------|-----|
-| App | https://app.localhost |
-| API Docs | https://api.localhost/docs |
+| Service   | URL                         |
+| --------- | --------------------------- |
+| App       | https://app.localhost       |
+| API Docs  | https://api.localhost/docs  |
 | BookStack | https://bookstack.localhost |
 
 If ingress isn't set up, use port-forwarding:
@@ -32,6 +32,7 @@ make k3s-status    # Show pod status
 ## Health Tab
 
 Click "🏥 Health" in the app to see:
+
 - Pod count (running/pending/failed)
 - Per-pod status with component name, age, restarts, CPU/memory
 - Color-coded: green = healthy, red = failing
@@ -92,12 +93,14 @@ kubectl port-forward -n docsearch svc/bookstack 6875:80 &
 ### 3. Configure the app
 
 Either update `values.yaml`:
+
 ```yaml
 api:
   env:
     BOOKSTACK_TOKEN_ID: "your-token-id"
-    BOOKSTACK_TOKEN_SECRET: "your-token-secret"
+    BOOKSTACK_TOKEN_SECRET: "your-token-secret" # pragma: allowlist secret
 ```
+
 Then `make k3s-up`.
 
 Or set it at runtime through the app's Settings > Configuration panel (no redeploy needed).

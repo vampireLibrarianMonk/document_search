@@ -4,12 +4,12 @@ How to build and stand up the k3s cluster with Helm from scratch.
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Docker | 24+ | https://docs.docker.com/get-docker/ |
-| curl | any | Pre-installed on most systems |
-| AWS credentials | - | `~/.aws/credentials` with Bedrock access |
-| mkcert certs | - | Generated via `make certs` (for HTTPS) |
+| Tool            | Version | Install                                  |
+| --------------- | ------- | ---------------------------------------- |
+| Docker          | 24+     | https://docs.docker.com/get-docker/      |
+| curl            | any     | Pre-installed on most systems            |
+| AWS credentials | -       | `~/.aws/credentials` with Bedrock access |
+| mkcert certs    | -       | Generated via `make certs` (for HTTPS)   |
 
 ## Initial Setup
 
@@ -20,11 +20,13 @@ make k3s-install
 ```
 
 This runs:
+
 ```bash
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--docker --disable traefik" sh -
 ```
 
 Flags:
+
 - `--docker`: uses your existing Docker runtime (no containerd)
 - `--disable traefik`: we use nginx-ingress instead
 
@@ -42,6 +44,7 @@ kubectl get nodes    # should show your machine as Ready
 ```
 
 Add to your shell profile:
+
 ```bash
 echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> ~/.bashrc
 ```
@@ -68,6 +71,7 @@ make k3s-up
 ```
 
 This runs:
+
 ```bash
 helm upgrade --install document-search deployment/kubernetes/helm/document-search --namespace docsearch --create-namespace
 ```
@@ -104,6 +108,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
 ```
 
 Wait for it:
+
 ```bash
 kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=90s
 ```
@@ -147,21 +152,22 @@ Edit `deployment/kubernetes/helm/document-search/values.yaml`:
 ```yaml
 api:
   env:
-    BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0    # change model
-    AWS_REGION: us-east-1                                        # change region
+    BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0 # change model
+    AWS_REGION: us-east-1 # change region
   resources:
     limits:
-      memory: 1Gi      # increase if needed
+      memory: 1Gi # increase if needed
       cpu: "1"
 
 postgres:
-  storage: 5Gi         # increase for more documents
+  storage: 5Gi # increase for more documents
 
 opensearch:
-  storage: 10Gi        # increase for larger index
+  storage: 10Gi # increase for larger index
 ```
 
 Apply changes:
+
 ```bash
 make k3s-up
 ```
@@ -181,12 +187,14 @@ kubectl rollout restart deployment/api deployment/frontend -n docsearch
 ## Data Persistence
 
 Data is stored in PersistentVolumeClaims:
+
 - `postgres-data` (5Gi) - document metadata, chunks, usage tracking
 - `opensearch-data` (10Gi) - search index
 - `api-data` (2Gi) - uploaded files
 - `bookstack-db-data` (2Gi) - wiki content
 
 These survive pod restarts and Helm upgrades. To wipe:
+
 ```bash
 make k3s-down
 kubectl delete pvc --all -n docsearch
@@ -208,12 +216,12 @@ sudo /usr/local/bin/k3s-uninstall.sh
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Pod in CrashLoopBackOff | `kubectl logs -n docsearch <pod-name>` to see error |
-| API can't reach Postgres | Postgres pod may still be starting, wait 30s |
-| Images not found | Rebuild with `docker build`, k3s uses local Docker images |
-| Port-forward fails | Install socat: `sudo apt install socat` |
-| Ingress not working | Check nginx controller is running: `kubectl get pods -n ingress-nginx` |
-| HTTPS cert not trusted | Run `mkcert -install` and restart browser |
-| Metrics not showing in Health tab | k3s includes metrics-server by default, wait 60s after boot |
+| Problem                           | Fix                                                                    |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| Pod in CrashLoopBackOff           | `kubectl logs -n docsearch <pod-name>` to see error                    |
+| API can't reach Postgres          | Postgres pod may still be starting, wait 30s                           |
+| Images not found                  | Rebuild with `docker build`, k3s uses local Docker images              |
+| Port-forward fails                | Install socat: `sudo apt install socat`                                |
+| Ingress not working               | Check nginx controller is running: `kubectl get pods -n ingress-nginx` |
+| HTTPS cert not trusted            | Run `mkcert -install` and restart browser                              |
+| Metrics not showing in Health tab | k3s includes metrics-server by default, wait 60s after boot            |

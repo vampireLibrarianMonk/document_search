@@ -2,12 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: {{ .Values.namespace }}
+  namespace: { { .Values.namespace } }
   labels:
     app: document-search
     component: frontend
 spec:
-  replicas: {{ .Values.frontend.replicas }}
+  replicas: { { .Values.frontend.replicas } }
   selector:
     matchLabels:
       component: frontend
@@ -19,19 +19,19 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: {{ .Values.frontend.image }}
+          image: { { .Values.frontend.image } }
           imagePullPolicy: Never
           ports:
-            - containerPort: {{ .Values.frontend.port }}
+            - containerPort: { { .Values.frontend.port } }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: {{ .Values.namespace }}
+  namespace: { { .Values.namespace } }
 spec:
   selector:
     component: frontend
   ports:
-    - port: {{ .Values.frontend.port }}
-      targetPort: {{ .Values.frontend.port }}
+    - port: { { .Values.frontend.port } }
+      targetPort: { { .Values.frontend.port } }
