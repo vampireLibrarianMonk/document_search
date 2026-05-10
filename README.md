@@ -20,6 +20,8 @@ When you upload a document, the app automatically reads the content (including s
 
 You can select multiple folders before uploading. Each selection accumulates, so pick folder A, then folder B, then hit Upload to process everything in one batch.
 
+During upload, a red "Cancel" button appears next to the progress indicator. Click it to stop processing remaining files (already-processed files are kept).
+
 ### Managing Documents
 
 - Click any document title to open or download the original file
@@ -47,7 +49,7 @@ You can select multiple folders before uploading. Each selection accumulates, so
 Click the "Settings" tab to access:
 
 - **Service Health**: connectivity status and version info for all services (AWS, Postgres, OpenSearch, BookStack, Confluence)
-- **Configuration**: select your Ask AI and Vision OCR models (with cost/speed labels), set AWS region, configure BookStack and Confluence credentials, toggle usage tracking
+- **Configuration**: select your Ask AI, Create Document, and Vision OCR models (with cost/speed labels), set AWS region, configure BookStack and Confluence credentials, toggle usage tracking, set upload concurrency
 - **Token Usage & Cost**: track API calls, token counts, and estimated costs per model and per day. Pricing is pulled live from the AWS bulk pricing JSON
 
 ### How Documents Are Processed
@@ -71,7 +73,7 @@ BookStack is a local wiki that runs alongside the app. When you upload through t
 1. Open BookStack at `http://localhost:6875` (default login: `admin@admin.com` / `password`)
 2. Create a book, add pages, and attach your PDFs
 3. Generate an API token in your BookStack profile settings
-4. Add the token to Settings > Configuration (or `infra/docker/compose/local.env`)
+4. Add the token to Settings > Configuration (or `deployment/docker/local.env`)
 5. Sync: `curl -X POST http://localhost:8000/sources/bookstack/sync`
 
 ### Syncing from Confluence Cloud
@@ -153,6 +155,16 @@ source .venv/bin/activate
 make dev-all
 ```
 
+Or with Kubernetes (k3s + Helm):
+
+```bash
+make k3s-install    # one time
+make k3s-up         # deploy
+make k3s-status     # check pods
+```
+
+See [deployment/kubernetes/helm/README-SETUP.md](deployment/kubernetes/helm/README-SETUP.md) for full k8s setup.
+
 ## Docker Services
 
 ![Docker Services](docs/diagrams/containers.png)
@@ -189,6 +201,8 @@ Key endpoints:
 - `GET /admin/usage` - Token usage and cost summary
 - `GET /admin/pricing` - Current Bedrock pricing for the region
 - `PUT /admin/pricing` - Manually load pricing JSON
+- `POST /admin/cancel-upload` - Cancel in-progress uploads
+- `GET /admin/k8s-health` - Kubernetes pod status and metrics
 - `GET /admin/jobs` - Background job status
 - `POST /admin/reindex` - Trigger a reindex
 

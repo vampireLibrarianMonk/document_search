@@ -1,4 +1,4 @@
-COMPOSE := docker compose -f infra/docker/compose/docker-compose.yml
+COMPOSE := docker compose -f deployment/docker/docker-compose.yml
 
 .PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs
 
@@ -30,7 +30,7 @@ build:
 
 # ── Stage 3: HTTPS ──────────────────────────────────────────
 certs:
-	./infra/docker/certs/generate.sh
+	./deployment/docker/certs/generate.sh
 
 up-https:
 	$(COMPOSE) --profile https up --build -d
@@ -47,3 +47,16 @@ test-all:
 
 test-coverage:
 	cd backend && python -m pytest tests/ -v --cov=app --cov-report=term-missing
+
+# ── Kubernetes (k3s + Helm) ─────────────────────────────────
+k3s-install:
+	curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--docker --disable traefik" sh -
+
+k3s-up:
+	helm upgrade --install document-search deployment/kubernetes/helm/document-search --namespace docsearch --create-namespace
+
+k3s-down:
+	helm uninstall document-search --namespace docsearch
+
+k3s-status:
+	kubectl get pods -n docsearch -o wide

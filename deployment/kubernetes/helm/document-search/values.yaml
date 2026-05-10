@@ -1,0 +1,108 @@
+# Global settings
+namespace: docsearch
+
+# API service
+api:
+  image: document-search-api:latest
+  replicas: 1
+  port: 8000
+  env:
+    APP_ENV: container-local
+    DATA_DIR: /app/data
+    AWS_REGION: us-east-1
+    BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+    BEDROCK_GENERATE_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+    BEDROCK_VISION_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+    TRACK_USAGE: "true"
+    WORKER_CONCURRENCY: "3"
+    MAX_WORKER_CONCURRENCY: "6"
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: docsearch
+    POSTGRES_PASSWORD: docsearch_local
+    POSTGRES_DB: docsearch
+    OPENSEARCH_HOST: opensearch
+    OPENSEARCH_PORT: "9200"
+    BOOKSTACK_URL: http://bookstack:80
+    BOOKSTACK_TOKEN_ID: "6RhZEKtP0Py4yS4sMSHy5Q6JGXXqxPkk"
+    BOOKSTACK_TOKEN_SECRET: "DF5357SIdbOK8MMpmYR7YmwsCMMg9PJw"
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 1Gi
+      cpu: "1"
+
+# Frontend
+frontend:
+  image: document-search-frontend:latest
+  replicas: 1
+  port: 80
+
+# Worker
+worker:
+  image: document-search-api:latest
+  replicas: 1
+  command: ["python", "-m", "app.worker"]
+
+# PostgreSQL
+postgres:
+  image: postgres:16-alpine
+  port: 5432
+  storage: 5Gi
+  env:
+    POSTGRES_USER: docsearch
+    POSTGRES_PASSWORD: docsearch_local
+    POSTGRES_DB: docsearch
+
+# OpenSearch
+opensearch:
+  image: opensearchproject/opensearch:2.19.1
+  port: 9200
+  storage: 10Gi
+  env:
+    discovery.type: single-node
+    DISABLE_SECURITY_PLUGIN: "true"
+    OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+# MinIO
+minio:
+  image: minio/minio:latest
+  port: 9000
+  consolePort: 9001
+  storage: 5Gi
+  env:
+    MINIO_ROOT_USER: minioadmin
+    MINIO_ROOT_PASSWORD: minioadmin
+
+# BookStack
+bookstack:
+  image: lscr.io/linuxserver/bookstack:latest
+  port: 80
+  env:
+    APP_URL: http://localhost:6875
+    APP_KEY: base64:q2K1LFhI1MmiUwoANcJuUaCtGZtjlqaqEQHFoXNpfbk=
+    DB_HOST: bookstack-db
+    DB_PORT: "3306"
+    DB_USERNAME: bookstack
+    DB_PASSWORD: bookstack_local
+    DB_DATABASE: bookstack
+
+bookstackDb:
+  image: mysql:8.0
+  port: 3306
+  storage: 2Gi
+  env:
+    MYSQL_ROOT_PASSWORD: bookstack_root
+    MYSQL_DATABASE: bookstack
+    MYSQL_USER: bookstack
+    MYSQL_PASSWORD: bookstack_local
+
+# Ingress
+ingress:
+  enabled: true
+  hosts:
+    app: app.localhost
+    api: api.localhost
+    bookstack: bookstack.localhost

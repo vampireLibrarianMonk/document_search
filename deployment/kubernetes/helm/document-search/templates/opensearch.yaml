@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: document-search
+    component: opensearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: opensearch
+  template:
+    metadata:
+      labels:
+        app: document-search
+        component: opensearch
+    spec:
+      containers:
+        - name: opensearch
+          image: {{ .Values.opensearch.image }}
+          ports:
+            - containerPort: {{ .Values.opensearch.port }}
+          env:
+            {{- range $key, $val := .Values.opensearch.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/opensearch/data
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: {{ .Values.opensearch.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: opensearch-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    component: opensearch
+  ports:
+    - port: {{ .Values.opensearch.port }}
+      targetPort: {{ .Values.opensearch.port }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensearch-data
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.opensearch.storage }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: document-search
+description: House Document Search - AI-powered document search and generation
+version: 1.0.0
+appVersion: "1.0.0"
+type: application

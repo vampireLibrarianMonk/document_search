@@ -147,7 +147,7 @@ mkcert -install
 make certs
 ```
 
-This creates trusted certificates for `app.localhost` and `api.localhost` in `infra/docker/certs/`. You only need to do this once.
+This creates trusted certificates for `app.localhost` and `api.localhost` in `deployment/docker/certs/`. You only need to do this once.
 
 ### 3. Build and start everything with HTTPS
 
@@ -185,14 +185,14 @@ Go to your profile (top right) > "API Tokens" > "Create Token". Copy the Token I
 
 ### 3. Add the token to the environment
 
-Edit `infra/docker/compose/local.env` and fill in:
+Edit `deployment/docker/local.env` and fill in:
 
 ```
 BOOKSTACK_TOKEN_ID=your-token-id
 BOOKSTACK_TOKEN_SECRET=your-token-secret
 ```
 
-Then restart the API: `docker compose -f infra/docker/compose/docker-compose.yml restart api`
+Then restart the API: `docker compose -f deployment/docker/docker-compose.yml restart api`
 
 ### 4. Organize your documents
 
@@ -224,7 +224,7 @@ Go to https://id.atlassian.com/manage-profile/security/api-tokens and create a t
 
 ### 4. Add credentials to the environment
 
-Edit `infra/docker/compose/local.env`:
+Edit `deployment/docker/local.env`:
 
 ```
 CONFLUENCE_URL=https://yoursite.atlassian.net
@@ -242,7 +242,7 @@ curl -X POST http://localhost:8000/sources/confluence/sync \
 
 ## Environment Variables
 
-The backend reads from environment variables. When running with Docker Compose, these are configured through `infra/docker/compose/local.env`:
+The backend reads from environment variables. When running with Docker Compose, these are configured through `deployment/docker/local.env`:
 
 ```
 # App
@@ -344,15 +344,21 @@ document_search/
     vite.config.ts
     Dockerfile
     nginx.conf
-  infra/
+  deployment/
     docker/
       caddy/
         Caddyfile          # Reverse proxy with TLS and security headers
       certs/
         generate.sh        # mkcert certificate generation
-      compose/
-        docker-compose.yml # All services: app, OpenSearch, Postgres, BookStack
-        local.env          # Environment variables (models, credentials, etc.)
+      docker-compose.yml   # All services: app, OpenSearch, Postgres, BookStack
+      local.env            # Environment variables (models, credentials, etc.)
+      README.md            # User operations guide
+      README-SETUP.md      # Infrastructure setup guide
+    kubernetes/
+      helm/
+        document-search/   # Helm chart (Chart.yaml, values.yaml, templates/)
+        README.md          # User operations guide
+        README-SETUP.md    # Infrastructure setup guide
   docs/
     diagrams/
       architecture.puml    # System architecture (PlantUML source)

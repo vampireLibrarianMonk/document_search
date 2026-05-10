@@ -23,3 +23,8 @@ backend/backend/
 
 # Certs
 infra/docker/certs/*.pem
+
+# Environment files with secrets (use .example as template)
+local.env
+deployment/docker/local.env
+deployment/kubernetes/helm/local.env

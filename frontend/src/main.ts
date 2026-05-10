@@ -61,7 +61,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "health" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -104,6 +104,10 @@ const state = reactive({
   detectedReason: "" as string,
   detectedAccepted: null as boolean | null,
   detectingFormat: false,
+
+  // K8s Health
+  k8sHealth: null as any,
+  k8sLoading: false,
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -331,6 +335,15 @@ async function loadUsage() {
   } catch { /* ignore */ }
 }
 
+async function loadK8sHealth() {
+  state.k8sLoading = true;
+  try {
+    const resp = await fetch(`${apiBase}/admin/k8s-health`);
+    state.k8sHealth = await resp.json();
+  } catch { /* ignore */ }
+  state.k8sLoading = false;
+}
+
 function checkModelWarnings() {
   const warnings: string[] = [];
   if (!state.config.BEDROCK_MODEL_ID) {
@@ -465,6 +478,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .toggle-row{display:flex;gap:6px;margin-bottom:12px}
 .upload-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .upload-row input[type=file]{font-size:.85rem}
+.upload-btn{cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .status{font-size:.8rem;margin-top:8px}
 .status-info{color:#6366f1}
 .status-success{color:#16a34a}
@@ -504,6 +518,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner-dark{border:2px solid #e5e7eb;border-top-color:#6366f1}
 .settings-panel{font-size:.85rem}
+.health-panel{margin-top:8px;font-size:.85rem}
+.k8s-summary{display:flex;gap:20px;justify-content:center;padding:12px 0;margin-bottom:12px;border-bottom:1px solid #f3f4f6}
+.k8s-stat{text-align:center}
+.k8s-stat-value{font-size:1.5rem;font-weight:700;color:#1a1a2e}
+.k8s-stat-label{font-size:.7rem;color:#9ca3af;text-transform:uppercase}
+.k8s-running{color:#16a34a}
+.k8s-pending{color:#f59e0b}
+.k8s-failed{color:#dc2626}
+.k8s-pods{display:flex;flex-direction:column;gap:6px}
+.k8s-pod{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;transition:border-color .15s}
+.k8s-pod-ok{border-left:3px solid #16a34a}
+.k8s-pod-err{border-left:3px solid #dc2626}
+.k8s-pod-header{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.k8s-pod-header:hover{opacity:.8}
+.k8s-pod-icon{font-size:1.1rem}
+.k8s-pod-component{font-weight:600;flex:1}
+.k8s-pod-status{font-size:.75rem;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#16a34a}
+.k8s-pod-status-err{background:#fef2f2;color:#dc2626}
+.k8s-pod-toggle{color:#9ca3af;font-size:.7rem}
+.k8s-pod-expanded{margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6}
+.k8s-pod-table{width:100%;font-size:.78rem;border-collapse:collapse}
+.k8s-pod-table td{padding:3px 8px;border-bottom:1px solid #f9fafb}
+.k8s-pod-table td:first-child{color:#9ca3af;width:120px;font-weight:500}
+.k8s-pod-table td:last-child{color:#374151}
+.k8s-pod-details{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:.75rem;color:#6b7280}
+.k8s-restarts{color:#f59e0b}
+.k8s-events{margin-top:8px;border-top:1px solid #f3f4f6;padding-top:6px}
+.k8s-events-toggle{font-size:.75rem;color:#6b7280;cursor:pointer;user-select:none;font-weight:500}
+.k8s-events-toggle:hover{color:#374151}
+.k8s-events-list{max-height:150px;overflow-y:auto;margin-top:4px;font-size:.72rem;font-family:'Courier New',monospace}
+.k8s-event{display:grid;grid-template-columns:65px 120px 1fr;gap:8px;padding:3px 4px;border-bottom:1px solid #f3f4f6;align-items:start}
+.k8s-event-time{color:#9ca3af}
+.k8s-event-reason{color:#6366f1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k8s-event-msg{color:#374151;word-break:break-word}
+.k8s-event-warn .k8s-event-reason{color:#f59e0b}
+.k8s-event-warn .k8s-event-msg{color:#92400e}
 .create-panel{margin-top:8px}
 .create-model-info{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;font-size:.78rem;color:#64748b}
 .detect-bar{padding:6px 12px;border-radius:6px;font-size:.78rem;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center}
@@ -546,6 +596,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .config-label{width:180px;font-size:.78rem;color:#6b7280;text-align:right;flex-shrink:0}
 .config-input{flex:1;padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.82rem;outline:none}
 .config-input:focus{border-color:#6366f1}
+.config-readonly{flex:1;padding:6px 10px;font-size:.82rem;color:#6b7280;background:#f9fafb;border-radius:6px;border:1px solid #f3f4f6}
 .secret-field{display:flex;flex:1;gap:4px;align-items:center}
 .secret-field .config-input{flex:1}
 .btn-eye{background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px}
@@ -631,6 +682,10 @@ createApp({
                 class: `btn btn-sm btn-outline ${state.mode === "create" ? "active" : ""}`,
                 onClick: () => { state.mode = "create"; loadConfig(); },
               }, "✏ Create"),
+              h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "health" ? "active" : ""}`,
+                onClick: () => { state.mode = "health"; loadK8sHealth(); },
+              }, "🏥 Health"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "settings" ? "active" : ""}`,
                 onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); },
@@ -770,6 +825,106 @@ createApp({
                 ])
               : null,
 
+            // Health panel (k8s pod status)
+            state.mode === "health"
+              ? h("div", { class: "health-panel" }, [
+                  state.k8sLoading
+                    ? h("div", { class: "status status-info" }, "Loading cluster health...")
+                    : null,
+                  state.k8sHealth && !state.k8sHealth.available
+                    ? h("div", { class: "status status-muted" }, `Kubernetes not available: ${state.k8sHealth.error || "cluster unreachable"}`)
+                    : null,
+                  state.k8sHealth && state.k8sHealth.available
+                    ? h("div", [
+                        // Summary bar
+                        h("div", { class: "k8s-summary" }, [
+                          h("div", { class: "k8s-stat" }, [
+                            h("div", { class: "k8s-stat-value k8s-running" }, `${state.k8sHealth.summary.running}`),
+                            h("div", { class: "k8s-stat-label" }, "Running"),
+                          ]),
+                          h("div", { class: "k8s-stat" }, [
+                            h("div", { class: "k8s-stat-value" }, `${state.k8sHealth.summary.total}`),
+                            h("div", { class: "k8s-stat-label" }, "Total Pods"),
+                          ]),
+                          state.k8sHealth.summary.pending > 0
+                            ? h("div", { class: "k8s-stat" }, [
+                                h("div", { class: "k8s-stat-value k8s-pending" }, `${state.k8sHealth.summary.pending}`),
+                                h("div", { class: "k8s-stat-label" }, "Pending"),
+                              ])
+                            : null,
+                          state.k8sHealth.summary.failed > 0
+                            ? h("div", { class: "k8s-stat" }, [
+                                h("div", { class: "k8s-stat-value k8s-failed" }, `${state.k8sHealth.summary.failed}`),
+                                h("div", { class: "k8s-stat-label" }, "Failed"),
+                              ])
+                            : null,
+                        ]),
+                        // Pod cards (collapsible)
+                        h("div", { class: "k8s-pods" },
+                          state.k8sHealth.pods.map((pod: any) => {
+                            const key = `pod_${pod.name}`;
+                            const open = (state as any)[key];
+                            return h("div", { class: `k8s-pod ${pod.status === "Running" ? "k8s-pod-ok" : "k8s-pod-err"}` }, [
+                              h("div", {
+                                class: "k8s-pod-header",
+                                onClick: () => ((state as any)[key] = !open),
+                              }, [
+                                h("span", { class: "k8s-pod-icon" }, pod.icon),
+                                h("span", { class: "k8s-pod-component" }, pod.component),
+                                h("span", { class: `k8s-pod-status ${pod.status === "Running" ? "" : "k8s-pod-status-err"}` }, pod.status),
+                                h("span", { class: "k8s-pod-toggle" }, open ? "▼" : "▶"),
+                              ]),
+                              open ? h("div", { class: "k8s-pod-expanded" }, [
+                                h("table", { class: "k8s-pod-table" }, [
+                                  h("tbody", [
+                                    h("tr", [h("td", "Pod"), h("td", pod.name)]),
+                                    h("tr", [h("td", "Node"), h("td", pod.node || "—")]),
+                                    h("tr", [h("td", "Age"), h("td", pod.age || "—")]),
+                                    h("tr", [h("td", "Restarts"), h("td", `${pod.restarts}`)]),
+                                    h("tr", [h("td", "CPU Usage"), h("td", pod.cpu_usage || "—")]),
+                                    h("tr", [h("td", "CPU Request"), h("td", pod.cpu || "—")]),
+                                    h("tr", [h("td", "Memory Usage"), h("td", pod.memory_usage || "—")]),
+                                    h("tr", [h("td", "Memory Request"), h("td", pod.memory || "—")]),
+                                    h("tr", [h("td", "Disk (PVC)"), h("td", pod.disk || "—")]),
+                                  ]),
+                                ]),
+                                // Event history dropdown
+                                pod.events && pod.events.length > 0
+                                  ? h("div", { class: "k8s-events" }, [
+                                      h("div", {
+                                        class: "k8s-events-toggle",
+                                        onClick: () => ((state as any)[`ev_${pod.name}`] = !(state as any)[`ev_${pod.name}`]),
+                                      }, [
+                                        h("span", (state as any)[`ev_${pod.name}`] ? "▼" : "▶"),
+                                        h("span", ` Event History (${pod.events.length})`),
+                                      ]),
+                                      (state as any)[`ev_${pod.name}`]
+                                        ? h("div", { class: "k8s-events-list" },
+                                            pod.events.map((ev: any) =>
+                                              h("div", { class: `k8s-event k8s-event-${ev.type === "Normal" ? "normal" : "warn"}` }, [
+                                                h("span", { class: "k8s-event-time" }, ev.time),
+                                                h("span", { class: "k8s-event-reason" }, ev.reason),
+                                                h("span", { class: "k8s-event-msg" }, ev.message),
+                                              ]),
+                                            ),
+                                          )
+                                        : null,
+                                    ])
+                                  : null,
+                              ]) : null,
+                            ]);
+                          }),
+                        ),
+                        h("button", {
+                          class: "btn btn-sm btn-outline",
+                          style: "margin-top:10px",
+                          onClick: loadK8sHealth,
+                        }, "Refresh"),
+                      ])
+                    : null,
+                ])
+              : null,
+
             // Settings panel
             state.mode === "settings"
               ? h("div", { class: "settings-panel" }, [
@@ -839,6 +994,7 @@ createApp({
                     state.configOpen ? h("div", { class: "collapsible-body" }, [
                       ...Object.entries(state.configEdits).map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
+                        const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
                         const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
@@ -857,10 +1013,13 @@ createApp({
                             "CONFLUENCE_EMAIL": "Confluence Email",
                             "CONFLUENCE_API_TOKEN": "Confluence Token",
                             "TRACK_USAGE": "Track Usage & Cost",
+                            "WORKER_CONCURRENCY": "Upload Concurrency",
                             "OPENSEARCH_HOST": "OpenSearch Host",
                             "OPENSEARCH_PORT": "OpenSearch Port",
                           } as Record<string, string>)[key] || key),
-                          isRegionSelect
+                          isReadOnly
+                            ? h("span", { class: "config-readonly" }, val || "—")
+                            : isRegionSelect
                             ? h("select", {
                                 class: "config-input",
                                 value: val,
@@ -987,7 +1146,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -1014,7 +1173,7 @@ createApp({
           ]),
 
           // Results card (hidden in settings mode)
-          state.mode !== "settings" && state.mode !== "create" && (hasResults.value || state.searchError || state.searchTime !== null)
+          state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" && (hasResults.value || state.searchError || state.searchTime !== null)
             ? h("div", { class: "card" }, [
                 h("h2", "Results"),
                 state.searchTime !== null
@@ -1056,27 +1215,36 @@ createApp({
           h("div", { class: "card" }, [
             h("h2", "Upload Documents"),
             h("div", { class: "upload-row" }, [
-              h("input", {
-                type: "file",
-                accept: ".pdf,.docx,.doc,.txt,.md,.jpg,.jpeg,.png,.tiff,.tif",
-                multiple: true,
-                disabled: state.uploadLoading,
-                onChange: (e: Event) => {
-                  const files = (e.target as HTMLInputElement).files;
-                  if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
-                },
-              }),
-              h("span", { style: "color:#9ca3af;font-size:.8rem" }, "or"),
-              h("input", {
-                type: "file",
-                webkitdirectory: true,
-                multiple: true,
-                disabled: state.uploadLoading,
-                onChange: (e: Event) => {
-                  const files = (e.target as HTMLInputElement).files;
-                  if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
-                },
-              }),
+              h("label", { class: "btn btn-sm btn-outline upload-btn" }, [
+                "📄 Add Files",
+                h("input", {
+                  type: "file",
+                  accept: ".pdf,.docx,.doc,.txt,.md,.jpg,.jpeg,.png,.tiff,.tif",
+                  multiple: true,
+                  disabled: state.uploadLoading,
+                  style: "display:none",
+                  onChange: (e: Event) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
+                    (e.target as HTMLInputElement).value = "";
+                  },
+                }),
+              ]),
+              h("label", { class: "btn btn-sm btn-outline upload-btn" }, [
+                "📁 Add Folder",
+                h("input", {
+                  type: "file",
+                  webkitdirectory: true,
+                  multiple: true,
+                  disabled: state.uploadLoading,
+                  style: "display:none",
+                  onChange: (e: Event) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files) state.uploadFiles = [...state.uploadFiles, ...Array.from(files)];
+                    (e.target as HTMLInputElement).value = "";
+                  },
+                }),
+              ]),
               state.uploadFiles.length > 0 && !state.uploadLoading
                 ? h("button", {
                     class: "btn btn-sm btn-outline",
@@ -1094,10 +1262,21 @@ createApp({
                   : `Upload${state.uploadFiles.length > 0 ? ` (${state.uploadFiles.length} files)` : ""}`,
                 state.uploadLoading ? h("span", { class: "spinner" }) : null,
               ]),
+              // Cancel button (visible during upload)
+              state.uploadLoading
+                ? h("button", {
+                    class: "btn btn-sm btn-danger",
+                    onClick: async () => {
+                      await fetch(`${apiBase}/admin/cancel-upload`, { method: "POST" });
+                      state.uploadLoading = false;
+                      state.uploadStatus = "Upload cancelled";
+                    },
+                  }, "✕ Cancel")
+                : null,
             ]),
             state.uploadFiles.length > 0 && !state.uploadLoading
               ? h("div", { class: "status status-info", style: "margin-top:6px" },
-                  `${state.uploadFiles.length} file${state.uploadFiles.length === 1 ? "" : "s"} selected. Pick more files or folders to add to the batch.`)
+                  `${state.uploadFiles.length} file${state.uploadFiles.length === 1 ? "" : "s"} queued. Click "Add Folder" again to add more folders.`)
               : null,
             // Live progress log with expandable processing details
             state.uploadLog.length > 0

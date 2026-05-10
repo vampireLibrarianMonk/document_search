@@ -14,3 +14,4 @@ markdown>=3.5.0
 weasyprint>=60.0
 python-pptx>=0.6.21
 pytest>=8.0.0
+kubernetes>=28.0.0

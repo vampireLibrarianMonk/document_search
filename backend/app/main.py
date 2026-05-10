@@ -118,10 +118,27 @@ async def ingest_upload_stream(files: list[UploadFile] = File(...)):
         content = await f.read()
         file_data.append((f.filename or "unknown", content))
 
+    # Create a job ID for this batch so it can be cancelled
+    batch_job_id = store.new_job_id("upload_batch")
+
     async def _stream():
         total = len(file_data)
         ok, fail = 0, 0
         for i, (name, content) in enumerate(file_data, start=1):
+            # Check for cancellation
+            from .db import get_conn as _get_conn
+
+            _conn = _get_conn()
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "SELECT status FROM jobs WHERE job_id = %s", (batch_job_id,)
+                )
+                _row = _cur.fetchone()
+            _conn.close()
+            if _row and _row[0] == "cancelled":
+                yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total, 'cancelled': True})}\n\n"
+                return
+
             yield f"data: {_json.dumps({'type': 'progress', 'file': name, 'step': 'uploading', 'current': i, 'total': total})}\n\n"
             try:
                 fake_file = StarletteUpload(filename=name, file=BytesIO(content))
@@ -144,6 +161,8 @@ async def ingest_upload_stream(files: list[UploadFile] = File(...)):
             except Exception as exc:
                 fail += 1
                 yield f"data: {_json.dumps({'type': 'error', 'file': name, 'current': i, 'total': total, 'error': str(exc)})}\n\n"
+
+        store.update_job_status(batch_job_id, "completed")
         yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total})}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
@@ -463,7 +482,7 @@ def delete_document(document_id: str):
 
 @app.delete("/documents")
 def delete_all_documents():
-    """Delete all documents and chunks from all stores."""
+    """Delete all documents and chunks from all stores, including files on disk."""
     try:
         os_search.get_client().delete_by_query(
             index=os_search.INDEX_NAME,
@@ -479,6 +498,18 @@ def delete_all_documents():
             _bookstack.delete_empty_pages_and_books()
     except Exception as e:
         _logger.warning("BookStack bulk cleanup failed: %s", e)
+
+    # Clean up files on disk
+    import shutil
+
+    upload_dir = store.upload_dir
+    if os.path.isdir(upload_dir):
+        for f in os.listdir(upload_dir):
+            filepath = os.path.join(upload_dir, f)
+            try:
+                os.unlink(filepath)
+            except Exception:
+                pass
 
     count = store.delete_all_documents()
     return {"deleted": count}
@@ -786,6 +817,29 @@ def _model_tags(model_id: str, provider: str) -> str:
     return " · ".join(tags)
 
 
+@app.post("/admin/cancel-upload")
+def admin_cancel_upload():
+    """Cancel all queued/processing upload jobs."""
+    from .db import get_conn
+
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE jobs SET status = 'cancelled' WHERE status IN ('queued', 'processing')"
+        )
+        count = cur.rowcount
+    conn.close()
+    return {"cancelled": count}
+
+
+@app.get("/admin/k8s-health")
+def admin_k8s_health():
+    """Get Kubernetes pod status and resource usage for the Health tab."""
+    from .k8s_health import get_cluster_health
+
+    return get_cluster_health()
+
+
 @app.get("/admin/config")
 def admin_get_config():
     """Return current configuration (secrets are masked)."""
@@ -808,6 +862,7 @@ def admin_get_config():
         "CONFLUENCE_EMAIL": os.getenv("CONFLUENCE_EMAIL", ""),
         "CONFLUENCE_API_TOKEN": os.getenv("CONFLUENCE_API_TOKEN", ""),
         "TRACK_USAGE": os.getenv("TRACK_USAGE", "true"),
+        "WORKER_CONCURRENCY": os.getenv("WORKER_CONCURRENCY", "3"),
     }
 
 
@@ -828,6 +883,7 @@ def admin_update_config(updates: dict):
         "CONFLUENCE_API_TOKEN",
         "TRACK_USAGE",
     }
+
     applied = {}
     for key, val in updates.items():
         if key in allowed:

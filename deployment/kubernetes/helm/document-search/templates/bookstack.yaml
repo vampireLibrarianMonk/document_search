@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstack
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: document-search
+    component: bookstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: bookstack
+  template:
+    metadata:
+      labels:
+        app: document-search
+        component: bookstack
+    spec:
+      containers:
+        - name: bookstack
+          image: {{ .Values.bookstack.image }}
+          ports:
+            - containerPort: {{ .Values.bookstack.port }}
+          env:
+            {{- range $key, $val := .Values.bookstack.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookstack
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    component: bookstack
+  ports:
+    - port: {{ .Values.bookstack.port }}
+      targetPort: {{ .Values.bookstack.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstack-db
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: document-search
+    component: bookstack-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: bookstack-db
+  template:
+    metadata:
+      labels:
+        app: document-search
+        component: bookstack-db
+    spec:
+      containers:
+        - name: mysql
+          image: {{ .Values.bookstackDb.image }}
+          ports:
+            - containerPort: {{ .Values.bookstackDb.port }}
+          env:
+            {{- range $key, $val := .Values.bookstackDb.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: bookstack-db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookstack-db
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    component: bookstack-db
+  ports:
+    - port: {{ .Values.bookstackDb.port }}
+      targetPort: {{ .Values.bookstackDb.port }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bookstack-db-data
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.bookstackDb.storage }}
