@@ -110,6 +110,14 @@ def get_cluster_health() -> dict:
                             disk = pvc_name
                         break
 
+            # Image metadata (tag, hash, build date)
+            image_info = ""
+            image_id = ""
+            if pod.status.container_statuses:
+                cs = pod.status.container_statuses[0]
+                image_info = cs.image or ""
+                image_id = (cs.image_id or "").replace("docker-pullable://", "").replace("docker://", "")
+
             pod_list.append(
                 {
                     "name": name,
@@ -123,6 +131,11 @@ def get_cluster_health() -> dict:
                     "memory": mem_req,
                     "disk": disk,
                     "node": pod.spec.node_name or "",
+                    "image": image_info,
+                    "image_hash": image_id,
+                    "started_at": pod.status.start_time.strftime("%Y-%m-%d %H:%M:%S")
+                    if pod.status.start_time
+                    else "",
                 },
             )
 

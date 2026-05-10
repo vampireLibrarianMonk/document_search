@@ -886,6 +886,9 @@ createApp({
                                     h("tr", [h("td", "Memory Usage"), h("td", pod.memory_usage || "—")]),
                                     h("tr", [h("td", "Memory Request"), h("td", pod.memory || "—")]),
                                     h("tr", [h("td", "Disk (PVC)"), h("td", pod.disk || "—")]),
+                                    h("tr", [h("td", "Image"), h("td", pod.image || "—")]),
+                                    h("tr", [h("td", "Image Hash"), h("td", pod.image_hash || "—")]),
+                                    h("tr", [h("td", "Started"), h("td", pod.started_at || "—")]),
                                   ]),
                                 ]),
                                 // Event history dropdown
