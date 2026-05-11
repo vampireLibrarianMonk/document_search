@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: document-search
+    component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: document-search
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: {{ .Values.worker.image }}
+          imagePullPolicy: Never
+          command: {{ toJson .Values.worker.command }}
+          env:
+            {{- range $key, $val := .Values.api.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 2Gi
+              cpu: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: aws-creds
+              mountPath: /root/.aws
+              readOnly: true
+      volumes:
+        - name: data
+          hostPath:
+            path: /home/flaniganp/PycharmProjects/document_search/data
+            type: DirectoryOrCreate
+        - name: aws-creds
+          hostPath:
+            path: /home/flaniganp/.aws
+            type: Directory

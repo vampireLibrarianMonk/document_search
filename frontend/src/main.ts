@@ -142,61 +142,111 @@ async function upload() {
   state.uploadStatus = "";
   state.uploadLog = [];
 
-  const body = new FormData();
-  for (const file of files) body.append("files", file);
+  const totalFiles = files.length;
 
   try {
-    const res = await fetch(`${apiBase}/ingest/upload-stream`, { method: "POST", body });
+    // Submit all files at once to the queue endpoint
+    const body = new FormData();
+    for (const file of files) body.append("files", file);
+
+    state.uploadStatus = `Submitting ${totalFiles} files...`;
+    const submitRes = await fetch(`${apiBase}/ingest/upload-queue`, { method: "POST", body });
+    if (!submitRes.ok) {
+      state.uploadStatus = `Submit failed: ${await submitRes.text()}`;
+      return;
+    }
+
+    const { batch_id, queued } = await submitRes.json();
+    state.uploadStatus = `${queued} files queued. Processing...`;
+
+    // Initialize log entries
+    for (const file of files) {
+      state.uploadLog.push({ file: file.name, status: "uploading", detail: "queued" });
+    }
+
+    // Persist batch_id so we can reconnect after refresh
+    localStorage.setItem("upload_batch_id", batch_id);
+    localStorage.setItem("upload_total", String(totalFiles));
+
+    // Subscribe to status stream
+    await watchBatch(batch_id, totalFiles);
+  } catch (e: any) {
+    state.uploadStatus = `Upload error: ${e.message || "Could not reach server"}`;
+  } finally {
+    state.uploadLoading = false;
+  }
+}
+
+async function watchBatch(batchId: string, totalFiles: number) {
+  try {
+    const res = await fetch(`${apiBase}/ingest/upload-status/${batchId}`);
     if (!res.ok) {
-      state.uploadStatus = `Upload failed: ${await res.text()}`;
-      state.uploadLoading = false;
+      state.uploadStatus = `Status stream failed: ${await res.text()}`;
       return;
     }
 
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let totalOk = 0;
+    let totalFail = 0;
 
     while (true) {
+      if (!state.uploadLoading) break;
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // Parse SSE lines
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         const msg = JSON.parse(line.slice(6));
 
-        if (msg.type === "progress") {
-          state.uploadLog.push({ file: msg.file, status: "uploading", detail: `${msg.current}/${msg.total} Extracting text...` });
-        } else if (msg.type === "done") {
-          // Update the last log entry for this file
-          const idx = state.uploadLog.findLastIndex((l: any) => l.file === msg.file);
+        if (msg.type === "done") {
+          const idx = state.uploadLog.findIndex((l: any) => l.file === msg.file && l.status === "uploading");
           if (idx >= 0) {
-            state.uploadLog[idx] = { file: msg.file, status: "done", detail: `${msg.category} / ${msg.document_type}`, log: msg.log || [] };
+            state.uploadLog[idx] = { file: msg.file, status: "done", detail: `${msg.category} / ${msg.document_type}` };
+          } else {
+            state.uploadLog.push({ file: msg.file, status: "done", detail: `${msg.category} / ${msg.document_type}` });
           }
+          totalOk++;
+          state.uploadStatus = `Progress: ${totalOk + totalFail}/${totalFiles} (${totalOk} ok, ${totalFail} failed)`;
         } else if (msg.type === "error") {
-          const idx = state.uploadLog.findLastIndex((l: any) => l.file === msg.file);
+          const idx = state.uploadLog.findIndex((l: any) => l.file === msg.file && l.status === "uploading");
           if (idx >= 0) {
             state.uploadLog[idx] = { file: msg.file, status: "error", detail: msg.error };
+          } else {
+            state.uploadLog.push({ file: msg.file, status: "error", detail: msg.error });
           }
+          totalFail++;
+          state.uploadStatus = `Progress: ${totalOk + totalFail}/${totalFiles} (${totalOk} ok, ${totalFail} failed)`;
         } else if (msg.type === "complete") {
-          state.uploadStatus = `Done: ${msg.uploaded} indexed, ${msg.errors} failed out of ${msg.total}`;
+          state.uploadStatus = `Done: ${msg.uploaded} indexed, ${msg.errors} failed out of ${totalFiles}`;
+          localStorage.removeItem("upload_batch_id");
+          localStorage.removeItem("upload_total");
         }
       }
     }
 
-    // Reset
     state.uploadFiles = [];
     const inputs = document.querySelectorAll('input[type="file"]') as NodeListOf<HTMLInputElement>;
     inputs.forEach(el => el.value = "");
     await loadDocuments();
   } catch (e: any) {
-    state.uploadStatus = `Upload error: ${e.message || "Could not reach server"}`;
+    state.uploadStatus = `Stream disconnected: ${e.message || "connection lost"} — refresh to reconnect`;
   } finally {
     state.uploadLoading = false;
+  }
+}
+
+function resumeUploadIfNeeded() {
+  const batchId = localStorage.getItem("upload_batch_id");
+  const total = localStorage.getItem("upload_total");
+  if (batchId && total) {
+    state.uploadLoading = true;
+    state.uploadStatus = "Reconnecting to in-progress upload...";
+    watchBatch(batchId, parseInt(total, 10));
   }
 }
 
@@ -409,6 +459,11 @@ async function deleteDoc(id: string) {
 async function deleteAll() {
   if (!confirm(`Delete all ${state.documents.length} documents? This cannot be undone.`)) return;
   await fetch(`${apiBase}/documents`, { method: "DELETE" });
+  localStorage.removeItem("upload_batch_id");
+  localStorage.removeItem("upload_total");
+  state.uploadLoading = false;
+  state.uploadLog = [];
+  state.uploadStatus = "";
   await loadDocuments();
 }
 
@@ -638,6 +693,7 @@ createApp({
   setup() {
     loadDocuments();
     loadConfig();  // check model config on startup
+    resumeUploadIfNeeded();  // reconnect to in-progress batch after refresh
 
     return () =>
       h("div", [
@@ -1272,9 +1328,13 @@ createApp({
                     onClick: async () => {
                       await fetch(`${apiBase}/admin/cancel-upload`, { method: "POST" });
                       state.uploadLoading = false;
-                      state.uploadStatus = "Upload cancelled";
+                      state.uploadStatus = "Upload cancelled — queue flushed";
+                      state.uploadLog = state.uploadLog.filter((l: any) => l.status === "done");
+                      localStorage.removeItem("upload_batch_id");
+                      localStorage.removeItem("upload_total");
+                      await loadDocuments();
                     },
-                  }, "✕ Cancel")
+                  }, "✕ Cancel & Flush Queue")
                 : null,
             ]),
             state.uploadFiles.length > 0 && !state.uploadLoading

@@ -103,6 +103,93 @@ async def ingest_upload_bulk(files: list[UploadFile] = File(...)) -> BulkUploadR
     return BulkUploadResponse(uploaded=uploaded, errors=errors)
 
 
+@app.post("/ingest/upload-queue")
+async def ingest_upload_queue(files: list[UploadFile] = File(...)):
+    """Save files to disk and queue them for background processing. Returns immediately."""
+    import uuid
+    from pathlib import Path
+
+    batch_id = f"batch_{uuid.uuid4().hex[:12]}"
+    queued = []
+
+    from .db import get_conn
+    from .services import SUPPORTED_EXTENSIONS, _sanitize_filename
+
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            continue
+        content = await f.read()
+        filename = f.filename or f"file{ext}"
+        safe_name = _sanitize_filename(filename)
+        job_id = store.new_id("job")
+        dest = os.path.join(store.upload_dir, f"{job_id}_{safe_name}")
+        with open(dest, "wb") as fh:
+            fh.write(content)
+
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO jobs (job_id, status, batch_id, file_path, filename) VALUES (%s, %s, %s, %s, %s)",
+                (job_id, "queued", batch_id, dest, filename),
+            )
+        conn.close()
+        queued.append({"job_id": job_id, "filename": filename})
+
+    return {"batch_id": batch_id, "queued": len(queued), "jobs": queued}
+
+
+@app.get("/ingest/upload-status/{batch_id}")
+async def ingest_upload_status(batch_id: str):
+    """SSE stream that emits progress as jobs in a batch complete."""
+    import asyncio
+    import json as _json
+
+    from starlette.responses import StreamingResponse
+
+    from .db import get_conn
+
+    async def _stream():
+        seen_done: set = set()
+        while True:
+            conn = get_conn()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT job_id, status, filename, category, document_type, document_id FROM jobs WHERE batch_id = %s",
+                    (batch_id,),
+                )
+                rows = cur.fetchall()
+            conn.close()
+
+            total = len(rows)
+            if total == 0:
+                yield f"data: {_json.dumps({'type': 'error', 'error': 'Batch not found'})}\n\n"
+                return
+
+            for job_id, status, filename, category, doc_type, doc_id in rows:
+                if job_id in seen_done:
+                    continue
+                if status == "completed":
+                    seen_done.add(job_id)
+                    yield f"data: {_json.dumps({'type': 'done', 'file': filename, 'category': category or 'Uncategorized', 'document_type': doc_type or 'general', 'document_id': doc_id, 'current': len(seen_done), 'total': total})}\n\n"
+                elif status.startswith("failed"):
+                    seen_done.add(job_id)
+                    yield f"data: {_json.dumps({'type': 'error', 'file': filename, 'error': status, 'current': len(seen_done), 'total': total})}\n\n"
+                elif status == "cancelled":
+                    seen_done.add(job_id)
+
+            done_count = len(seen_done)
+            if done_count >= total:
+                ok = sum(1 for _, s, *_ in rows if s == "completed")
+                fail = sum(1 for _, s, *_ in rows if s.startswith("failed"))
+                yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total})}\n\n"
+                return
+
+            await asyncio.sleep(1)
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
 @app.post("/ingest/upload-stream")
 async def ingest_upload_stream(files: list[UploadFile] = File(...)):
     """Upload multiple files with SSE progress updates per file."""
@@ -112,56 +199,74 @@ async def ingest_upload_stream(files: list[UploadFile] = File(...)):
     from starlette.datastructures import UploadFile as StarletteUpload
     from starlette.responses import StreamingResponse
 
-    # Read all file contents upfront before streaming begins
-    file_data = []
+    # Read file metadata upfront (names + raw bytes in batches to limit memory)
+    # We must read all content before the response starts because the request
+    # body becomes unavailable once streaming begins.
+    BATCH_SIZE = 10
+    file_batches: list[list[tuple[str, bytes]]] = []
+    current_batch: list[tuple[str, bytes]] = []
+
     for f in files:
         content = await f.read()
-        file_data.append((f.filename or "unknown", content))
+        current_batch.append((f.filename or "unknown", content))
+        if len(current_batch) >= BATCH_SIZE:
+            file_batches.append(current_batch)
+            current_batch = []
+    if current_batch:
+        file_batches.append(current_batch)
+
+    total = sum(len(b) for b in file_batches)
+
+    # Create a job ID for this batch so it can be cancelled
+    batch_job_id = store.new_job_id("upload_batch")
 
     # Create a job ID for this batch so it can be cancelled
     batch_job_id = store.new_job_id("upload_batch")
 
     async def _stream():
-        total = len(file_data)
         ok, fail = 0, 0
-        for i, (name, content) in enumerate(file_data, start=1):
-            # Check for cancellation
-            from .db import get_conn as _get_conn
+        file_num = 0
+        for batch in file_batches:
+            for name, content in batch:
+                file_num += 1
 
-            _conn = _get_conn()
-            with _conn.cursor() as _cur:
-                _cur.execute(
-                    "SELECT status FROM jobs WHERE job_id = %s",
-                    (batch_job_id,),
-                )
-                _row = _cur.fetchone()
-            _conn.close()
-            if _row and _row[0] == "cancelled":
-                yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total, 'cancelled': True})}\n\n"
-                return
+                # Check for cancellation
+                from .db import get_conn as _get_conn
 
-            yield f"data: {_json.dumps({'type': 'progress', 'file': name, 'step': 'uploading', 'current': i, 'total': total})}\n\n"
-            try:
-                fake_file = StarletteUpload(filename=name, file=BytesIO(content))
-                result = await ingest_file_to_store(store, fake_file)
-                ok += 1
-                doc = store.get_document(result.document_id)
-                cat = doc.category if doc else "Uncategorized"
-                dtype = doc.document_type if doc else "general"
-                msg = {
-                    "type": "done",
-                    "file": name,
-                    "current": i,
-                    "total": total,
-                    "document_id": result.document_id,
-                    "category": cat,
-                    "document_type": dtype,
-                    "log": result.processing_log,
-                }
-                yield f"data: {_json.dumps(msg)}\n\n"
-            except Exception as exc:
-                fail += 1
-                yield f"data: {_json.dumps({'type': 'error', 'file': name, 'current': i, 'total': total, 'error': str(exc)})}\n\n"
+                _conn = _get_conn()
+                with _conn.cursor() as _cur:
+                    _cur.execute(
+                        "SELECT status FROM jobs WHERE job_id = %s",
+                        (batch_job_id,),
+                    )
+                    _row = _cur.fetchone()
+                _conn.close()
+                if _row and _row[0] == "cancelled":
+                    yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total, 'cancelled': True})}\n\n"
+                    return
+
+                yield f"data: {_json.dumps({'type': 'progress', 'file': name, 'step': 'uploading', 'current': file_num, 'total': total})}\n\n"
+                try:
+                    fake_file = StarletteUpload(filename=name, file=BytesIO(content))
+                    result = await ingest_file_to_store(store, fake_file)
+                    ok += 1
+                    doc = store.get_document(result.document_id)
+                    cat = doc.category if doc else "Uncategorized"
+                    dtype = doc.document_type if doc else "general"
+                    msg = {
+                        "type": "done",
+                        "file": name,
+                        "current": file_num,
+                        "total": total,
+                        "document_id": result.document_id,
+                        "category": cat,
+                        "document_type": dtype,
+                        "log": result.processing_log,
+                    }
+                    yield f"data: {_json.dumps(msg)}\n\n"
+                except Exception as exc:
+                    fail += 1
+                    yield f"data: {_json.dumps({'type': 'error', 'file': name, 'current': file_num, 'total': total, 'error': str(exc)})}\n\n"
 
         store.update_job_status(batch_job_id, "completed")
         yield f"data: {_json.dumps({'type': 'complete', 'uploaded': ok, 'errors': fail, 'total': total})}\n\n"
@@ -517,8 +622,15 @@ def delete_all_documents():
     except Exception as e:
         _logger.warning("BookStack bulk cleanup failed: %s", e)
 
-    # Clean up files on disk
+    # Cancel any in-progress jobs
+    from .db import get_conn
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("UPDATE jobs SET status = 'cancelled' WHERE status IN ('queued', 'processing')")
+        cur.execute("DELETE FROM jobs")
+    conn.close()
 
+    # Clean up files on disk
     upload_dir = store.upload_dir
     if os.path.isdir(upload_dir):
         for f in os.listdir(upload_dir):
@@ -890,16 +1002,31 @@ def _model_tags(model_id: str, provider: str) -> str:
 
 @app.post("/admin/cancel-upload")
 def admin_cancel_upload():
-    """Cancel all queued/processing upload jobs."""
+    """Cancel all queued/processing upload jobs and clean up their files."""
     from .db import get_conn
 
     conn = get_conn()
     with conn.cursor() as cur:
+        # Get file paths before cancelling so we can clean up
+        cur.execute(
+            "SELECT file_path FROM jobs WHERE status IN ('queued', 'processing') AND file_path IS NOT NULL",
+        )
+        paths = [row[0] for row in cur.fetchall()]
         cur.execute(
             "UPDATE jobs SET status = 'cancelled' WHERE status IN ('queued', 'processing')",
         )
         count = cur.rowcount
+        cur.execute("DELETE FROM jobs WHERE status = 'cancelled'")
     conn.close()
+
+    # Remove queued files from disk
+    for p in paths:
+        try:
+            if os.path.isfile(p):
+                os.unlink(p)
+        except Exception:
+            pass
+
     return {"cancelled": count}
 
 

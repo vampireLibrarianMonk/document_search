@@ -29,7 +29,6 @@ signal.signal(signal.SIGINT, _handle_signal)
 
 
 def get_concurrency() -> int:
-    """Get the configured max concurrent file processing."""
     return int(os.getenv("WORKER_CONCURRENCY", "3"))
 
 
@@ -39,23 +38,13 @@ async def process_job(job_id: str, file_path: str, filename: str):
 
     from starlette.datastructures import UploadFile
 
+    from app.db import get_conn
     from app.pg_store import PgStore
     from app.services import ingest_file_to_store
 
     store = PgStore()
 
     try:
-        # Update status
-        from app.db import get_conn
-
-        conn = get_conn()
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE jobs SET status = 'processing' WHERE job_id = %s",
-                (job_id,),
-            )
-        conn.close()
-
         # Check for cancellation
         conn = get_conn()
         with conn.cursor() as cur:
@@ -67,22 +56,25 @@ async def process_job(job_id: str, file_path: str, filename: str):
                 return
         conn.close()
 
-        # Read file and process
         with open(file_path, "rb") as f:
             content = f.read()
 
         fake_file = UploadFile(filename=filename, file=BytesIO(content))
-        await ingest_file_to_store(store, fake_file)
+        result = await ingest_file_to_store(store, fake_file)
 
-        # Mark complete
+        # Update job with result metadata
+        doc = store.get_document(result.document_id)
+        category = doc.category if doc else "Uncategorized"
+        doc_type = doc.document_type if doc else "general"
+
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE jobs SET status = 'completed' WHERE job_id = %s",
-                (job_id,),
+                "UPDATE jobs SET status = 'completed', category = %s, document_type = %s, document_id = %s WHERE job_id = %s",
+                (category, doc_type, result.document_id, job_id),
             )
         conn.close()
-        logger.info("Job %s completed: %s", job_id, filename)
+        logger.info("Job %s completed: %s -> %s / %s", job_id, filename, category, doc_type)
 
     except Exception as e:
         logger.error("Job %s failed: %s", job_id, e)
@@ -101,47 +93,57 @@ async def poll_and_process():
 
     concurrency = get_concurrency()
     semaphore = asyncio.Semaphore(concurrency)
-    logger.info(
-        "Worker started (concurrency=%d, pid=%d)",
-        concurrency,
-        os.getpid(),
-    )
+    logger.info("Worker started (concurrency=%d, pid=%d)", concurrency, os.getpid())
+
+    active: set = set()
 
     while not _shutdown:
         try:
-            # Fetch queued jobs
+            # How many slots are free?
+            free = concurrency - len(active)
+            if free <= 0:
+                await asyncio.sleep(0.5)
+                # Clean up finished tasks
+                done = {t for t in active if t.done()}
+                active -= done
+                continue
+
             conn = get_conn()
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT job_id, status FROM jobs
-                       WHERE status = 'queued'
-                       ORDER BY created_at ASC
-                       LIMIT %s""",
-                    (concurrency,),
+                    """UPDATE jobs SET status = 'processing'
+                       WHERE job_id IN (
+                           SELECT job_id FROM jobs
+                           WHERE status = 'queued' AND file_path IS NOT NULL
+                           ORDER BY created_at ASC
+                           LIMIT %s
+                       )
+                       RETURNING job_id, file_path, filename""",
+                    (free,),
                 )
                 jobs = cur.fetchall()
             conn.close()
 
             if not jobs:
-                await asyncio.sleep(2)
+                # Clean up finished tasks
+                done = {t for t in active if t.done()}
+                active -= done
+                await asyncio.sleep(1)
                 continue
 
-            # Process jobs concurrently up to the semaphore limit
-            async def _run(job_id, file_path, filename):
-                async with semaphore:
-                    await process_job(job_id, file_path, filename)
+            for jid, fp, fn in jobs:
+                async def _run(job_id, file_path, filename):
+                    async with semaphore:
+                        await process_job(job_id, file_path, filename)
 
-            tasks = []
-            for job_id, _ in jobs:
-                # For now, jobs from the SSE endpoint are processed inline
-                # This worker handles jobs queued via the bulk/async path
-                # We'll need to store file_path in the jobs table
-                tasks.append(
-                    asyncio.create_task(process_job(job_id, "", "")),
-                )
+                task = asyncio.create_task(_run(jid, fp, fn))
+                active.add(task)
 
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+            # Brief pause before next poll
+            await asyncio.sleep(0.5)
+            # Clean up finished tasks
+            done = {t for t in active if t.done()}
+            active -= done
 
         except Exception as e:
             logger.error("Worker poll error: %s", e)

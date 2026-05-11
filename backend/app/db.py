@@ -53,8 +53,28 @@ CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
 CREATE TABLE IF NOT EXISTS jobs (
     job_id TEXT PRIMARY KEY,
     status TEXT NOT NULL DEFAULT 'queued',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    batch_id TEXT,
+    file_path TEXT,
+    filename TEXT,
+    category TEXT,
+    document_type TEXT,
+    document_id TEXT
 );
+
+-- Add columns if upgrading from older schema
+DO $$ BEGIN
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS batch_id TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS file_path TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS filename TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS category TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS document_type TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS document_id TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_batch ON jobs(batch_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
 CREATE TABLE IF NOT EXISTS token_usage (
     id SERIAL PRIMARY KEY,
