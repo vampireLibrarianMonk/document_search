@@ -1,5 +1,10 @@
 COMPOSE := docker compose -f deployment/docker/docker-compose.yml
 
+# Build metadata
+export IMAGE_TAG := $(shell git describe --tags --always 2>/dev/null || echo "latest")
+export BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+export GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
 .PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs
 
 # ── Stage 1: Local dev ──────────────────────────────────────

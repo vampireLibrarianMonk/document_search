@@ -417,11 +417,26 @@ def generate_document(body: dict):
     top_k = body.get("top_k", 15)
     filters = body.get("filters", {})
     document_ids = body.get("document_ids")  # optional: specific docs to use
+    template_id = body.get("template_id")  # optional: template to follow
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
     if fmt not in ("md", "docx", "pdf", "png", "pptx"):
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+    # If a template is specified, inject its structure into the prompt
+    template_instruction = ""
+    if template_id:
+        tmpl = store.get_template(template_id)
+        if tmpl:
+            import json as _json
+            template_instruction = (
+                f"\n\nIMPORTANT: Follow this document structure as a template. "
+                f"Create the same sections and field types, but fill them with appropriate content "
+                f"based on the user's request. Do NOT output the JSON structure itself. "
+                f"Output a properly formatted Markdown document that matches this layout:\n"
+                f"{_json.dumps(tmpl['structure'], indent=2)}\n"
+            )
 
     context_parts = []
 
@@ -477,7 +492,8 @@ def generate_document(body: dict):
         )
 
     # Generate markdown content via Bedrock
-    markdown_content = generate_markdown(prompt, context, manual_mode=bool(document_ids), fmt=fmt)
+    full_prompt = prompt + template_instruction
+    markdown_content = generate_markdown(full_prompt, context, manual_mode=bool(document_ids), fmt=fmt)
 
     return {"markdown": markdown_content, "format": fmt}
 
@@ -644,6 +660,55 @@ def delete_all_documents():
     return {"deleted": count}
 
 
+# -- Templates --
+
+
+@app.post("/templates/extract")
+async def extract_template_endpoint(file: UploadFile = File(...), name: str = ""):
+    """Upload a file and extract its structure as a reusable template."""
+    from .template_extractor import extract_template
+
+    content = await file.read()
+    filename = file.filename or "unknown"
+
+    structure = extract_template(content, filename)
+
+    # Save to database
+    template_id = store.new_id("tmpl")
+    template_name = name or structure.get("title", filename)
+    store.save_template(
+        template_id=template_id,
+        name=template_name,
+        source_format=structure.get("source_format", "unknown"),
+        structure=structure,
+    )
+
+    return {"template_id": template_id, "name": template_name, "structure": structure}
+
+
+@app.get("/templates")
+def list_templates():
+    """List all saved templates."""
+    return store.list_templates()
+
+
+@app.get("/templates/{template_id}")
+def get_template(template_id: str):
+    """Get a template's structure."""
+    tmpl = store.get_template(template_id)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return tmpl
+
+
+@app.delete("/templates/{template_id}")
+def delete_template(template_id: str):
+    """Delete a template."""
+    if not store.delete_template(template_id):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"deleted": template_id}
+
+
 @app.get("/admin/jobs", response_model=list[JobResponse])
 def admin_jobs() -> list[JobResponse]:
     return store.get_jobs()
@@ -708,6 +773,14 @@ def admin_health_check():
     """Check connectivity to all services and return status with versions."""
     checks: dict = {}
     errors: list[str] = []
+
+    # App build metadata
+    checks["app"] = {
+        "status": "ok",
+        "tag": os.getenv("IMAGE_TAG", "dev"),
+        "build_date": os.getenv("BUILD_DATE", "unknown"),
+        "git_hash": os.getenv("GIT_HASH", "unknown"),
+    }
 
     # AWS
     try:

@@ -3,6 +3,10 @@ services:
   frontend:
     build:
       context: ../../frontend
+      args:
+        IMAGE_TAG: ${IMAGE_TAG:-latest}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
     ports:
       - "5173:80"
@@ -14,6 +18,10 @@ services:
   api:
     build:
       context: ../../backend
+      args:
+        IMAGE_TAG: ${IMAGE_TAG:-latest}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -43,6 +51,10 @@ services:
   worker:
     build:
       context: ../../backend
+      args:
+        IMAGE_TAG: ${IMAGE_TAG:-latest}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
     env_file: local.env

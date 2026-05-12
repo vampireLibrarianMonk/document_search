@@ -279,3 +279,56 @@ class PgStore:
                 return {"totals": totals, "by_model": by_model, "by_day": by_day}
         finally:
             conn.close()
+
+    # -- Templates --
+
+    def save_template(self, template_id: str, name: str, source_format: str, structure: dict) -> None:
+        import json as _json
+
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO templates (template_id, name, source_format, structure)
+                       VALUES (%s, %s, %s, %s)
+                       ON CONFLICT (template_id) DO UPDATE SET
+                         name=EXCLUDED.name, structure=EXCLUDED.structure""",
+                    (template_id, name, source_format, _json.dumps(structure)),
+                )
+        finally:
+            conn.close()
+
+    def list_templates(self) -> list[dict]:
+        conn = get_conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT template_id, name, source_format, created_at FROM templates ORDER BY created_at DESC")
+                return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    def get_template(self, template_id: str) -> dict | None:
+        import json as _json
+
+        conn = get_conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM templates WHERE template_id = %s", (template_id,))
+                row = cur.fetchone()
+                if row:
+                    row = dict(row)
+                    if isinstance(row["structure"], str):
+                        row["structure"] = _json.loads(row["structure"])
+                    return row
+                return None
+        finally:
+            conn.close()
+
+    def delete_template(self, template_id: str) -> bool:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM templates WHERE template_id = %s", (template_id,))
+                return cur.rowcount > 0
+        finally:
+            conn.close()

@@ -1,5 +1,16 @@
 FROM python:3.10-slim AS base
 WORKDIR /app
+
+ARG IMAGE_TAG=latest
+ARG BUILD_DATE=unknown
+ARG GIT_HASH=unknown
+
+LABEL org.opencontainers.image.version="${IMAGE_TAG}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${GIT_HASH}"
+
+ENV IMAGE_TAG=${IMAGE_TAG} BUILD_DATE=${BUILD_DATE} GIT_HASH=${GIT_HASH}
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     pandoc \

@@ -105,6 +105,12 @@ const state = reactive({
   detectedAccepted: null as boolean | null,
   detectingFormat: false,
 
+  // Templates
+  templates: [] as Array<{ template_id: string; name: string; source_format: string; created_at: string }>,
+  selectedTemplateId: "" as string,
+  templateImporting: false,
+  templatePreview: null as any,
+
   // K8s Health
   k8sHealth: null as any,
   k8sLoading: false,
@@ -296,6 +302,55 @@ async function detectFormat() {
   finally { state.detectingFormat = false; }
 }
 
+// -- Templates --
+
+async function loadTemplates() {
+  try {
+    const resp = await fetch(`${apiBase}/templates`);
+    if (resp.ok) state.templates = await resp.json();
+  } catch { /* ignore */ }
+}
+
+async function importTemplate() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".pdf,.docx,.doc,.pptx,.md,.jpg,.jpeg,.png,.tiff,.tif";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    state.templateImporting = true;
+    state.templatePreview = null;
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch(`${apiBase}/templates/extract`, { method: "POST", body: form });
+      if (!resp.ok) {
+        const err = await resp.json();
+        state.generateError = err.detail || "Template extraction failed";
+        return;
+      }
+      const data = await resp.json();
+      state.templatePreview = data.structure;
+      state.selectedTemplateId = data.template_id;
+      await loadTemplates();
+    } catch (e: any) {
+      state.generateError = e.message || "Template import failed";
+    } finally {
+      state.templateImporting = false;
+    }
+  };
+  input.click();
+}
+
+async function deleteTemplate(id: string) {
+  await fetch(`${apiBase}/templates/${id}`, { method: "DELETE" });
+  if (state.selectedTemplateId === id) {
+    state.selectedTemplateId = "";
+    state.templatePreview = null;
+  }
+  await loadTemplates();
+}
+
 async function generateDoc() {
   if (!state.generatePrompt.trim()) return;
   state.generateLoading = true;
@@ -311,6 +366,7 @@ async function generateDoc() {
         prompt: state.generatePrompt,
         format: state.generateFormat,
         document_ids: state.generateSelectedDocs.length > 0 ? state.generateSelectedDocs : undefined,
+        template_id: state.selectedTemplateId || undefined,
       }),
     });
     if (!resp.ok) {
@@ -736,7 +792,7 @@ createApp({
               }, "Ask AI"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "create" ? "active" : ""}`,
-                onClick: () => { state.mode = "create"; loadConfig(); },
+                onClick: () => { state.mode = "create"; loadConfig(); loadTemplates(); },
               }, "✏ Create"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "health" ? "active" : ""}`,
@@ -783,6 +839,61 @@ createApp({
                         ]),
                       ),
                     ),
+                  ]),
+                  // Template selector
+                  h("div", { class: "create-source", style: "margin-top:8px" }, [
+                    h("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:4px" }, [
+                      h("label", { class: "create-source-label" },
+                        state.selectedTemplateId
+                          ? `Template: ${state.templates.find((t: any) => t.template_id === state.selectedTemplateId)?.name || "Selected"}`
+                          : "Template: none (freeform generation)",
+                      ),
+                      h("button", {
+                        class: "btn btn-sm btn-outline",
+                        disabled: state.templateImporting,
+                        onClick: importTemplate,
+                      }, state.templateImporting ? "Importing..." : "Import Template"),
+                    ]),
+                    state.templates.length > 0
+                      ? h("select", {
+                          class: "config-input",
+                          style: "width:100%;margin-top:4px",
+                          value: state.selectedTemplateId,
+                          onChange: (e: Event) => {
+                            state.selectedTemplateId = (e.target as HTMLSelectElement).value;
+                            state.templatePreview = null;
+                          },
+                        }, [
+                          h("option", { value: "" }, "— No template (freeform) —"),
+                          ...state.templates.map((t: any) =>
+                            h("option", { value: t.template_id }, `${t.name} (${t.source_format})`),
+                          ),
+                        ])
+                      : null,
+                    // Template actions row
+                    state.selectedTemplateId
+                      ? h("div", { style: "display:flex;gap:6px;margin-top:4px" }, [
+                          h("button", {
+                            class: "btn btn-sm btn-outline",
+                            onClick: async () => {
+                              const resp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}`);
+                              if (resp.ok) state.templatePreview = (await resp.json()).structure;
+                            },
+                          }, "Preview Structure"),
+                          h("button", {
+                            class: "btn btn-sm btn-outline",
+                            style: "color:#ef4444",
+                            onClick: () => deleteTemplate(state.selectedTemplateId),
+                          }, "Delete"),
+                        ])
+                      : null,
+                    // Template preview
+                    state.templatePreview
+                      ? h("pre", {
+                          class: "create-preview",
+                          style: "max-height:200px;overflow:auto;font-size:.75rem;margin-top:6px",
+                        }, JSON.stringify(state.templatePreview, null, 2))
+                      : null,
                   ]),
                   // Format detection status bar
                   (state.detectedFormat || state.detectingFormat)
@@ -1010,9 +1121,11 @@ createApp({
                                     ? "not configured"
                                     : info.status === "error"
                                       ? "connection failed"
-                                      : name === "aws"
-                                        ? `${info.version} · ${info.username} (${info.region})`
-                                        : info.version || "connected",
+                                      : name === "app"
+                                        ? `${info.tag} · ${info.git_hash} · ${info.build_date}`
+                                        : name === "aws"
+                                          ? `${info.version} · ${info.username} (${info.region})`
+                                          : info.version || "connected",
                                 ),
                               ]),
                             ),

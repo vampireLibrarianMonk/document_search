@@ -88,6 +88,14 @@ CREATE TABLE IF NOT EXISTS token_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_usage_ts ON token_usage(timestamp);
+
+CREATE TABLE IF NOT EXISTS templates (
+    template_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    source_format TEXT NOT NULL,
+    structure JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 """
 
 
