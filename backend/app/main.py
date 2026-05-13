@@ -421,7 +421,7 @@ def generate_document(body: dict):
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
-    if fmt not in ("md", "docx", "pdf", "png", "pptx"):
+    if fmt not in ("md", "docx", "pdf", "png", "pptx", "txt"):
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
 
     # If a template is specified, inject its structure into the prompt
@@ -495,7 +495,13 @@ def generate_document(body: dict):
     full_prompt = prompt + template_instruction
     markdown_content = generate_markdown(full_prompt, context, manual_mode=bool(document_ids), fmt=fmt)
 
-    return {"markdown": markdown_content, "format": fmt}
+    # Resolve effective format (email keywords → txt)
+    effective_fmt = fmt
+    email_keywords = ["email", "e-mail"]
+    if any(kw in prompt.lower() for kw in email_keywords):
+        effective_fmt = "txt"
+
+    return {"markdown": markdown_content, "format": effective_fmt}
 
 
 @app.post("/generate/detect-format")
@@ -525,7 +531,7 @@ def generate_detect_format(body: dict):
                     "text": (
                         "You detect the best output format for a document request. "
                         "Reply with EXACTLY this format: FORMAT|REASON\n"
-                        "FORMAT must be one of: md, docx, pdf, png, pptx\n"
+                        "FORMAT must be one of: md, docx, pdf, png, pptx, txt\n"
                         "REASON is 2-4 words explaining why.\n\n"
                         "Examples:\n"
                         "- 'Write a letter to my HOA' → docx|formal letter\n"
@@ -533,7 +539,10 @@ def generate_detect_format(body: dict):
                         "- 'Fill out the modification form' → docx|fillable form\n"
                         "- 'Make a quick reference card' → png|visual reference\n"
                         "- 'Generate a report with all fees' → pdf|formal report\n"
-                        "- 'Summarize the bylaws' → md|text summary"
+                        "- 'Summarize the bylaws' → md|text summary\n"
+                        "- 'Write an email to my roofer' → txt|email message\n"
+                        "- 'Send an email asking about repairs' → txt|email message\n"
+                        "- 'Draft an email to the contractor' → txt|email message"
                     ),
                 },
             ],
@@ -545,7 +554,7 @@ def generate_detect_format(body: dict):
         fmt = parts[0].strip().lower()
         reason = parts[1].strip() if len(parts) > 1 else "detected"
 
-        if fmt not in ("md", "docx", "pdf", "png", "pptx"):
+        if fmt not in ("md", "docx", "pdf", "png", "pptx", "txt"):
             fmt = "md"
             reason = "general content"
 
@@ -564,6 +573,7 @@ def generate_convert(body: dict):
         convert_to_pdf,
         convert_to_png,
         convert_to_pptx,
+        convert_to_txt,
     )
 
     markdown = body.get("markdown", "")
@@ -584,6 +594,9 @@ def generate_convert(body: dict):
     elif fmt == "pptx":
         file_bytes = convert_to_pptx(markdown)
         filename = "generated.pptx"
+    elif fmt == "txt":
+        file_bytes = convert_to_txt(markdown)
+        filename = "generated.txt"
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
 

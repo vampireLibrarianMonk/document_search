@@ -99,7 +99,7 @@ const state = reactive({
   generateFilename: "" as string,
   generateDone: false,
   generateDownloading: false,
-  generateHistory: [] as Array<{ prompt: string; markdown: string; timestamp: string }>,
+  generateHistory: [] as Array<{ prompt: string; markdown: string; format: string; timestamp: string }>,
   detectedFormat: "" as string,
   detectedReason: "" as string,
   detectedAccepted: null as boolean | null,
@@ -376,15 +376,22 @@ async function generateDoc() {
     }
     const data = await resp.json();
     state.generateResult = data.markdown;
+    const effectiveFormat = data.format || state.generateFormat;
+    state.generateFormat = effectiveFormat;
     state.generateDone = true;
-    // Save to history
-    state.generateHistory.unshift({
-      prompt: state.generatePrompt,
-      markdown: data.markdown,
-      format: state.generateFormat,
-      timestamp: new Date().toLocaleTimeString(),
-    });
-    if (state.generateHistory.length > 10) state.generateHistory.pop();
+    // Save to history (skip if same prompt+format already exists)
+    const isDuplicate = state.generateHistory.some(
+      (h) => h.prompt === state.generatePrompt && h.format === effectiveFormat
+    );
+    if (!isDuplicate) {
+      state.generateHistory.unshift({
+        prompt: state.generatePrompt,
+        markdown: data.markdown,
+        format: effectiveFormat,
+        timestamp: new Date().toLocaleTimeString(),
+      });
+      if (state.generateHistory.length > 10) state.generateHistory.pop();
+    }
   } catch (e: any) {
     state.generateError = e.message || "Could not reach server";
   } finally {
@@ -402,6 +409,23 @@ async function downloadGenerated(markdown?: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "generated.md"; a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  if (fmt === "txt") {
+    const plain = content
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/^[-*]\s+/gm, "")
+      .replace(/^---+$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    const blob = new Blob([plain], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "generated.txt"; a.click();
     URL.revokeObjectURL(url);
     return;
   }
@@ -903,7 +927,7 @@ createApp({
                           : state.detectedAccepted === true
                             ? h("span", { class: "detect-accepted" }, [
                                 "✅ ",
-                                `Detected: ${({md:"Markdown",docx:"Word",pdf:"PDF",png:"Image",pptx:"PowerPoint"} as any)[state.detectedFormat]} — ${state.detectedReason}`,
+                                `Detected: ${({md:"Markdown",docx:"Word",pdf:"PDF",png:"Image",pptx:"PowerPoint",txt:"Email/Text"} as any)[state.detectedFormat]} — ${state.detectedReason}`,
                                 h("button", {
                                   class: "detect-reject",
                                   title: "Override",
@@ -929,6 +953,7 @@ createApp({
                       h("option", { value: "pdf" }, "PDF (.pdf)"),
                       h("option", { value: "png" }, "Image (.png)"),
                       h("option", { value: "pptx" }, "PowerPoint (.pptx)"),
+                      h("option", { value: "txt" }, "Email/Text (.txt)"),
                     ]),
                     h("button", {
                       class: "btn btn-primary",
@@ -963,10 +988,10 @@ createApp({
                     ? h("div", { class: "create-preview" }, state.generateResult)
                     : null,
                   // History
-                  state.generateHistory.length > 1
+                  state.generateHistory.length > 0
                     ? h("div", { class: "create-history" }, [
-                        h("div", { style: "font-weight:600;font-size:.78rem;color:#9ca3af;margin-bottom:4px" }, "Previous Generations"),
-                        ...state.generateHistory.slice(1).map((item: any) =>
+                        h("div", { style: "font-weight:600;font-size:.78rem;color:#9ca3af;margin-bottom:4px" }, "Generation History"),
+                        ...state.generateHistory.map((item: any) =>
                           h("div", { class: "history-item" }, [
                             h("span", { class: "badge", style: "font-size:.65rem;margin-right:4px" }, (item.format || "md").toUpperCase()),
                             h("span", { class: "history-prompt" }, item.prompt),

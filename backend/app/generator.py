@@ -7,6 +7,7 @@ in the user's actual house documents. Supports multiple output formats:
   - PDF (.pdf) - via Pandoc + weasyprint
   - Image (.png) - Markdown to styled HTML, screenshot via Playwright
   - PowerPoint (.pptx) - via Pandoc slide-per-heading
+  - Text (.txt) - plain text email format, stripped of markdown formatting
 """
 
 from __future__ import annotations
@@ -59,6 +60,18 @@ _FORMAT_INSTRUCTIONS = {
         "- Include a final slide with summary or contact info\n"
         "- Aim for 5-8 slides total"
     ),
+    "txt": (
+        "Structure the output as a plain-text email ready to send:\n"
+        "- Start with a greeting line\n"
+        "- Write in plain conversational paragraphs\n"
+        "- Do NOT use markdown formatting (no #, **, -, or other markup)\n"
+        "- Do NOT use em dashes\n"
+        "- Use blank lines between paragraphs\n"
+        "- Use numbered lists only when listing multiple questions or items\n"
+        "- End with a polite closing and signature placeholder\n"
+        "- Keep the tone professional but friendly and approachable\n"
+        "- Use layman's terms, avoid legalistic or overly technical language"
+    ),
     "form": (
         "Structure the output as a fillable form with:\n"
         "- A form title as level-1 heading\n"
@@ -88,7 +101,10 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
     # Detect if this is a form request
     effective_fmt = fmt
     form_keywords = ["form", "application", "fill out", "fill in", "request form"]
-    if any(kw in prompt.lower() for kw in form_keywords):
+    email_keywords = ["email", "e-mail"]
+    if any(kw in prompt.lower() for kw in email_keywords):
+        effective_fmt = "txt"
+    elif any(kw in prompt.lower() for kw in form_keywords):
         effective_fmt = "form"
 
     format_instruction = _FORMAT_INSTRUCTIONS.get(effective_fmt, _FORMAT_INSTRUCTIONS["md"])
@@ -450,3 +466,22 @@ def _parse_slides(markdown: str) -> list[dict]:
         slides.append(current)
 
     return slides if slides else [{"title": "Untitled", "bullets": ["No content generated"]}]
+
+
+def convert_to_txt(markdown_content: str) -> bytes:
+    """Convert markdown to plain text by stripping formatting."""
+    import re
+
+    text = markdown_content
+    # Remove headings markup
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Remove bold/italic
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"\*([^*]+)\*", r"\1", text)
+    # Remove bullet markers
+    text = re.sub(r"^[-*]\s+", "", text, flags=re.MULTILINE)
+    # Remove horizontal rules
+    text = re.sub(r"^---+$", "", text, flags=re.MULTILINE)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip().encode("utf-8")
