@@ -14,6 +14,17 @@ dist/
 # Data
 backend/data/
 backend/backend/
+data/uploads/
+
+# Binary document files
+*.pdf
+*.docx
+*.pptx
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.tif
 
 # Logs
 *.log
