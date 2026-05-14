@@ -166,6 +166,10 @@ make k3s-status     # check pods
 
 See [deployment/kubernetes/helm/README-SETUP.md](deployment/kubernetes/helm/README-SETUP.md) for full k8s setup.
 
+## Kubernetes Services
+
+![Kubernetes Services](docs/diagrams/kubernetes.png)
+
 ## Docker Services
 
 ![Docker Services](docs/diagrams/containers.png)
@@ -217,3 +221,21 @@ make test-coverage     # with coverage report
 ```
 
 119 tests across 8 test files covering classification, extraction, schemas, services, API routes, BookStack client, Confluence client, and full HTTP/HTTPS integration.
+
+## Diagrams
+
+Architecture diagrams are maintained as PlantUML source files in `docs/diagrams/`. To regenerate the PNGs after editing a `.puml` file:
+
+```bash
+make diagrams
+```
+
+Requires Java (headless) and the PlantUML JAR at `~/.local/lib/plantuml.jar`. Install with:
+
+```bash
+sudo apt-get install -y default-jre-headless
+wget -O ~/.local/lib/plantuml.jar \
+  "https://github.com/plantuml/plantuml/releases/download/v1.2024.8/plantuml-1.2024.8.jar"
+```
+
+See [docs/PLANTUML_GUIDE.md](docs/PLANTUML_GUIDE.md) for the full methodology including CI integration and generating diagrams from repo context via Bedrock.

@@ -17,7 +17,8 @@ PlantUML is a Java application. You need:
 
 ```bash
 sudo apt-get install -y default-jre-headless
-wget -O /usr/local/lib/plantuml.jar \
+mkdir -p ~/.local/lib
+wget -O ~/.local/lib/plantuml.jar \
   "https://github.com/plantuml/plantuml/releases/download/v1.2024.8/plantuml-1.2024.8.jar"
 ```
 
@@ -30,7 +31,7 @@ brew install plantuml
 ### Verify
 
 ```bash
-JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" java -jar /usr/local/lib/plantuml.jar -version
+JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" java -jar ~/.local/lib/plantuml.jar -version
 ```
 
 The `-Djava.awt.headless=true` flag is critical for CI/server environments with no display.
@@ -157,8 +158,8 @@ from pathlib import Path
 
 # Default locations to search for the PlantUML JAR
 _JAR_SEARCH_PATHS = [
-    "/usr/local/lib/plantuml.jar",
     os.path.expanduser("~/.local/lib/plantuml.jar"),
+    "/usr/local/lib/plantuml.jar",
     # Add more as needed
 ]
 
@@ -261,7 +262,7 @@ def diagram(path, fmt):
 ```makefile
 diagrams:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" \
-	  java -jar /usr/local/lib/plantuml.jar -tpng docs/diagrams/*.puml
+	  java -jar ~/.local/lib/plantuml.jar -tpng docs/diagrams/*.puml
 ```
 
 ## CI/CD Integration

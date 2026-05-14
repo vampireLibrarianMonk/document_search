@@ -1,0 +1,55 @@
+@startuml kubernetes
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Kubernetes (k3s + Helm) Deployment
+
+node "k3s Cluster" {
+
+  package "Namespace: docsearch" {
+
+    package "Application Pods" {
+      [frontend\nVue 3 + Nginx\n:80] as fe
+      [api\nFastAPI + Uvicorn\n:8000] as api
+      [worker\nBackground jobs] as wk
+    }
+
+    package "Data Store Pods" {
+      database "postgres\nPostgreSQL 16\n:5432\nPVC 5Gi" as pg
+      database "opensearch\nOpenSearch 2.19\n:9200\nPVC 10Gi" as os
+      storage "minio\nS3-compatible\n:9000/:9001\nPVC 5Gi" as minio
+    }
+
+    package "Document Wiki Pods" {
+      [bookstack\nBookStack\n:80] as bs
+      database "bookstack-db\nMySQL 8.0\n:3306\nPVC 2Gi" as bsdb
+    }
+
+    package "Ingress" {
+      [Nginx Ingress\nTLS termination] as ingress
+    }
+  }
+}
+
+actor "User" as user
+
+user --> ingress : HTTPS
+
+ingress --> fe : app.localhost
+ingress --> api : api.localhost
+ingress --> bs : bookstack.localhost
+
+fe --> api : REST
+api --> pg
+api --> os
+api --> minio
+api --> bs
+wk --> api
+bs --> bsdb
+
+note bottom of ingress
+  IngressClass: nginx
+  TLS secret: docsearch-tls
+  Hosts: app / api / bookstack
+end note
+@enduml

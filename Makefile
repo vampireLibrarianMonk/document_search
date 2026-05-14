@@ -5,7 +5,7 @@ export IMAGE_TAG := $(shell git describe --tags --always 2>/dev/null || echo "la
 export BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 export GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-.PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs
+.PHONY: dev-backend dev-frontend dev-all up down logs ps build up-https certs diagrams
 
 # ── Stage 1: Local dev ──────────────────────────────────────
 dev-backend:
@@ -52,6 +52,10 @@ test-all:
 
 test-coverage:
 	cd backend && python -m pytest tests/ -v --cov=app --cov-report=term-missing
+
+# ── Diagrams ────────────────────────────────────────────────
+diagrams:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" java -jar ~/.local/lib/plantuml.jar -tpng docs/diagrams/*.puml
 
 # ── Kubernetes (k3s + Helm) ─────────────────────────────────
 k3s-install:
