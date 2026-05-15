@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS templates (
     name TEXT NOT NULL,
     source_format TEXT NOT NULL,
     structure JSONB NOT NULL,
+    file_bytes BYTEA,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 """

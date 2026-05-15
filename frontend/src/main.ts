@@ -6,6 +6,7 @@
  */
 
 import { createApp, h, reactive, computed } from "vue";
+import { renderAsync } from "docx-preview";
 
 // -- Types --
 
@@ -61,7 +62,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "health" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "templates" | "diagnostic" | "health" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -531,6 +532,12 @@ async function viewDoc(id: string) {
   }
 }
 
+function previewDoc(doc: DocInfo) {
+  const ext = doc.title.split(".").pop()?.toLowerCase() || "";
+  (state as any).previewDoc = doc;
+  (state as any).previewExt = ext;
+}
+
 async function deleteDoc(id: string) {
   await fetch(`${apiBase}/documents/${id}`, { method: "DELETE" });
   await loadDocuments();
@@ -765,6 +772,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .log-uploading .log-file{color:#6366f1}
 .log-done .log-detail{color:#16a34a}
 .log-error .log-detail{color:#dc2626}
+.preview-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000}
+.preview-modal{background:#fff;border-radius:12px;width:90vw;max-width:900px;height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.preview-header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #e5e7eb}
+.preview-title{flex:1;font-size:.9rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview-close{background:none;border:none;font-size:1.3rem;cursor:pointer;padding:4px 8px;border-radius:4px;color:#6b7280}
+.preview-close:hover{background:#f3f4f6;color:#1a1a2e}
+.preview-body{flex:1;overflow:auto;padding:0}
+.preview-body iframe{width:100%;height:100%;border:none}
+.preview-body img{max-width:100%;max-height:100%;object-fit:contain;display:block;margin:0 auto}
+.preview-docx{padding:20px;overflow:auto;height:100%}
 `;
 
 // -- App --
@@ -819,6 +836,14 @@ createApp({
                 onClick: () => { state.mode = "create"; loadConfig(); loadTemplates(); },
               }, "✏ Create"),
               h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "templates" ? "active" : ""}`,
+                onClick: () => { state.mode = "templates"; loadTemplates(); },
+              }, "📋 Templates"),
+              h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "diagnostic" ? "active" : ""}`,
+                onClick: () => { state.mode = "diagnostic"; loadTemplates(); },
+              }, "🔬 Diagnostic"),
+              h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "health" ? "active" : ""}`,
                 onClick: () => { state.mode = "health"; loadK8sHealth(); },
               }, "🏥 Health"),
@@ -864,61 +889,27 @@ createApp({
                       ),
                     ),
                   ]),
-                  // Template selector
-                  h("div", { class: "create-source", style: "margin-top:8px" }, [
-                    h("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:4px" }, [
-                      h("label", { class: "create-source-label" },
-                        state.selectedTemplateId
-                          ? `Template: ${state.templates.find((t: any) => t.template_id === state.selectedTemplateId)?.name || "Selected"}`
-                          : "Template: none (freeform generation)",
-                      ),
-                      h("button", {
-                        class: "btn btn-sm btn-outline",
-                        disabled: state.templateImporting,
-                        onClick: importTemplate,
-                      }, state.templateImporting ? "Importing..." : "Import Template"),
-                    ]),
-                    state.templates.length > 0
-                      ? h("select", {
-                          class: "config-input",
-                          style: "width:100%;margin-top:4px",
-                          value: state.selectedTemplateId,
-                          onChange: (e: Event) => {
-                            state.selectedTemplateId = (e.target as HTMLSelectElement).value;
-                            state.templatePreview = null;
-                          },
-                        }, [
-                          h("option", { value: "" }, "— No template (freeform) —"),
-                          ...state.templates.map((t: any) =>
-                            h("option", { value: t.template_id }, `${t.name} (${t.source_format})`),
-                          ),
-                        ])
-                      : null,
-                    // Template actions row
-                    state.selectedTemplateId
-                      ? h("div", { style: "display:flex;gap:6px;margin-top:4px" }, [
-                          h("button", {
-                            class: "btn btn-sm btn-outline",
-                            onClick: async () => {
-                              const resp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}`);
-                              if (resp.ok) state.templatePreview = (await resp.json()).structure;
+                  // Template selector (minimal — manage in Templates tab)
+                  state.templates.length > 0
+                    ? h("div", { class: "create-source", style: "margin-top:8px" }, [
+                        h("div", { style: "display:flex;align-items:center;gap:8px" }, [
+                          h("label", { class: "create-source-label" }, "Template:"),
+                          h("select", {
+                            class: "config-input",
+                            style: "flex:1",
+                            value: state.selectedTemplateId,
+                            onChange: (e: Event) => {
+                              state.selectedTemplateId = (e.target as HTMLSelectElement).value;
                             },
-                          }, "Preview Structure"),
-                          h("button", {
-                            class: "btn btn-sm btn-outline",
-                            style: "color:#ef4444",
-                            onClick: () => deleteTemplate(state.selectedTemplateId),
-                          }, "Delete"),
-                        ])
-                      : null,
-                    // Template preview
-                    state.templatePreview
-                      ? h("pre", {
-                          class: "create-preview",
-                          style: "max-height:200px;overflow:auto;font-size:.75rem;margin-top:6px",
-                        }, JSON.stringify(state.templatePreview, null, 2))
-                      : null,
-                  ]),
+                          }, [
+                            h("option", { value: "" }, "— None (freeform) —"),
+                            ...state.templates.map((t: any) =>
+                              h("option", { value: t.template_id }, `${t.name} (${t.source_format})`),
+                            ),
+                          ]),
+                        ]),
+                      ])
+                    : null,
                   // Format detection status bar
                   (state.detectedFormat || state.detectingFormat)
                     ? h("div", { class: "detect-bar" }, [
@@ -963,6 +954,48 @@ createApp({
                       state.generateLoading ? "Generating..." : "Generate",
                       state.generateLoading ? h("span", { class: "spinner" }) : null,
                     ]),
+                    state.selectedTemplateId
+                      ? h("button", {
+                          class: "btn btn-primary",
+                          style: "background:#16a34a",
+                          disabled: state.generateLoading || !state.generatePrompt.trim(),
+                          onClick: async () => {
+                            state.generateLoading = true;
+                            state.generateError = "";
+                            try {
+                              const resp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}/fill`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  prompt: state.generatePrompt,
+                                  document_ids: state.generateSelectedDocs.length > 0 ? state.generateSelectedDocs : undefined,
+                                }),
+                              });
+                              if (!resp.ok) {
+                                const err = await resp.json();
+                                state.generateError = err.detail || "Fill failed";
+                                return;
+                              }
+                              const blob = await resp.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              const tmplName = state.templates.find((t: any) => t.template_id === state.selectedTemplateId)?.name || "filled";
+                              a.href = url;
+                              a.download = `${tmplName.replace(/\s+/g, '_')}_filled.docx`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                              state.generateDone = true;
+                            } catch (e: any) {
+                              state.generateError = e.message || "Fill template failed";
+                            } finally {
+                              state.generateLoading = false;
+                            }
+                          },
+                        }, [
+                          state.generateLoading ? "Filling..." : "📄 Fill Template",
+                          state.generateLoading ? h("span", { class: "spinner" }) : null,
+                        ])
+                      : null,
                     state.generateDone
                       ? h("button", {
                           class: "btn btn-outline",
@@ -1014,6 +1047,308 @@ createApp({
                         ),
                       ])
                     : null,
+                ])
+              : null,
+
+            // Templates panel
+            state.mode === "templates"
+              ? h("div", { class: "create-panel" }, [
+                  // Header with import button
+                  h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
+                    h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Templates"),
+                    h("button", {
+                      class: "btn btn-sm btn-primary",
+                      disabled: state.templateImporting,
+                      onClick: importTemplate,
+                    }, state.templateImporting ? "Importing..." : "+ Import Template"),
+                  ]),
+                  // Model quality note
+                  h("div", { style: "background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.78rem;color:#64748b;line-height:1.5" }, [
+                    h("span", { style: "font-weight:600;color:#475569" }, "💡 Extraction quality depends on your Template model. "),
+                    "A faster model (e.g. Haiku) works well for short documents but may miss details on longer ones (5+ pages). ",
+                    "A larger model (e.g. Sonnet) captures full structure, fonts, and layout even for complex documents. ",
+                    "Change the model in ",
+                    h("span", { style: "color:#6366f1;cursor:pointer;text-decoration:underline", onClick: () => { state.mode = "settings"; loadConfig(); } }, "Settings → Template Extraction Model"),
+                    ".",
+                  ]),
+                  // Template list
+                  state.templates.length === 0
+                    ? h("div", { class: "empty" }, "No templates yet. Import a PDF, DOCX, or PPTX to extract its structure.")
+                    : h("div", { style: "display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;border:1px solid #f3f4f6;border-radius:8px;padding:8px" },
+                        state.templates.map((t: any) =>
+                          h("div", {
+                            style: `border:1px solid ${state.selectedTemplateId === t.template_id ? "#6366f1" : "#e5e7eb"};border-radius:8px;padding:10px 14px;cursor:pointer;transition:border-color .15s`,
+                            onClick: async () => {
+                              if (state.selectedTemplateId === t.template_id) {
+                                state.selectedTemplateId = "";
+                                state.templatePreview = null;
+                              } else {
+                                state.selectedTemplateId = t.template_id;
+                                const resp = await fetch(`${apiBase}/templates/${t.template_id}`);
+                                if (resp.ok) state.templatePreview = (await resp.json()).structure;
+                              }
+                            },
+                          }, [
+                            h("div", { style: "display:flex;align-items:center;gap:8px" }, [
+                              h("span", { style: "font-weight:600;font-size:.88rem;flex:1" }, t.name),
+                              h("span", { class: "badge" }, t.source_format),
+                              h("span", { style: "font-size:.72rem;color:#9ca3af" }, t.created_at?.split("T")[0] || ""),
+                              h("button", {
+                                class: "btn-view",
+                                title: "Export JSON",
+                                onClick: (e: Event) => {
+                                  e.stopPropagation();
+                                  fetch(`${apiBase}/templates/${t.template_id}`)
+                                    .then(r => r.json())
+                                    .then(data => {
+                                      const blob = new Blob([JSON.stringify(data.structure, null, 2)], { type: "application/json" });
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement("a");
+                                      a.href = url; a.download = `${t.name.replace(/\s+/g, '_')}.template.json`; a.click();
+                                      URL.revokeObjectURL(url);
+                                    });
+                                },
+                              }, "⬇"),
+                              h("button", {
+                                class: "btn-delete",
+                                title: "Delete template",
+                                onClick: (e: Event) => { e.stopPropagation(); deleteTemplate(t.template_id); },
+                              }, "✕"),
+                            ]),
+                          ]),
+                        ),
+                      ),
+                  // Structure preview for selected template
+                  state.templatePreview
+                    ? h("div", {
+                        style: "margin-top:12px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;max-height:320px;overflow:auto",
+                      }, [
+                        // View mode toggle
+                        h("div", { style: "display:flex;gap:4px;margin-bottom:10px" }, [
+                          ...["visual", "json", "yaml", "xml"].map(mode =>
+                            h("button", {
+                              class: `btn btn-sm ${(state as any).templateViewMode === mode || (!((state as any).templateViewMode) && mode === "visual") ? "btn-primary" : "btn-outline"}`,
+                              style: "padding:3px 10px;font-size:.72rem",
+                              onClick: () => { (state as any).templateViewMode = mode; },
+                            }, mode.toUpperCase()),
+                          ),
+                        ]),
+                        // Render based on mode
+                        ((state as any).templateViewMode === "json")
+                          ? h("pre", { style: "font-size:.75rem;font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;margin:0;color:#374151" },
+                              JSON.stringify(state.templatePreview, null, 2))
+                          : ((state as any).templateViewMode === "yaml")
+                          ? h("pre", { style: "font-size:.75rem;font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;margin:0;color:#374151" },
+                              (() => {
+                                const toYaml = (obj: any, indent = 0): string => {
+                                  const pad = "  ".repeat(indent);
+                                  if (Array.isArray(obj)) return obj.map(item => `${pad}- ${typeof item === "object" ? "\n" + toYaml(item, indent + 1) : item}`).join("\n");
+                                  if (typeof obj === "object" && obj !== null) return Object.entries(obj).map(([k, v]) => {
+                                    if (typeof v === "object" && v !== null) return `${pad}${k}:\n${toYaml(v, indent + 1)}`;
+                                    return `${pad}${k}: ${JSON.stringify(v)}`;
+                                  }).join("\n");
+                                  return `${pad}${obj}`;
+                                };
+                                return toYaml(state.templatePreview);
+                              })())
+                          : ((state as any).templateViewMode === "xml")
+                          ? h("pre", { style: "font-size:.75rem;font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;margin:0;color:#374151" },
+                              (() => {
+                                const esc = (s: string) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+                                const p = state.templatePreview;
+                                let xml = `<template type="${esc(p.type||"")}" title="${esc(p.title||"")}" source_format="${esc(p.source_format||"")}">\n`;
+                                if (p.fonts) xml += `  <fonts heading_font="${esc(p.fonts.heading_font||"")}" body_font="${esc(p.fonts.body_font||"")}" default_size_pt="${p.fonts.default_size_pt||""}"/>\n`;
+                                if (p.page_layout) xml += `  <page_layout size="${esc(p.page_layout.size||"")}" orientation="${esc(p.page_layout.orientation||"")}">\n    <margins top="${p.page_layout.margins?.top||""}" bottom="${p.page_layout.margins?.bottom||""}" left="${p.page_layout.margins?.left||""}" right="${p.page_layout.margins?.right||""}"/>\n  </page_layout>\n`;
+                                xml += "  <sections>\n";
+                                for (const s of (p.sections||[])) {
+                                  xml += `    <section${s.heading?` heading="${esc(s.heading)}"`:""}${s.style?` style="${esc(s.style)}"`:""}>\n`;
+                                  for (const e of (s.elements||[])) {
+                                    const attrs = Object.entries(e).filter(([k])=>k!=="type").map(([k,v])=>`${k}="${esc(Array.isArray(v)?v.join(" | "):String(v))}"`).join(" ");
+                                    xml += `      <${e.type} ${attrs}/>\n`;
+                                  }
+                                  xml += "    </section>\n";
+                                }
+                                xml += "  </sections>\n</template>";
+                                return xml;
+                              })())
+                          : [
+                        // Visual mode (default)
+                        h("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5e7eb" }, [
+                          h("span", { class: "badge" }, state.templatePreview.type || "document"),
+                          h("span", { style: "font-weight:600;font-size:.9rem" }, state.templates.find((t: any) => t.template_id === state.selectedTemplateId)?.name || "Template"),
+                          state.templatePreview.title && state.templatePreview.title !== "Untitled"
+                            ? h("span", { style: "color:#6b7280;font-size:.78rem;font-style:italic" }, `"${state.templatePreview.title}"`)
+                            : null,
+                          state.templatePreview.page_count ? h("span", { style: "color:#9ca3af;font-size:.75rem;margin-left:auto" }, `${state.templatePreview.page_count} pages`) : null,
+                          state.templatePreview.table_count ? h("span", { style: "color:#9ca3af;font-size:.75rem" }, `${state.templatePreview.table_count} tables`) : null,
+                        ]),
+                        // Font and layout info
+                        state.templatePreview.fonts || state.templatePreview.page_layout
+                          ? h("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f3f4f6;font-size:.72rem;color:#6b7280" }, [
+                              state.templatePreview.fonts?.heading_font ? h("span", {}, `Headings: ${state.templatePreview.fonts.heading_font}`) : null,
+                              state.templatePreview.fonts?.body_font ? h("span", {}, `Body: ${state.templatePreview.fonts.body_font}`) : null,
+                              state.templatePreview.fonts?.default_size_pt ? h("span", {}, `${state.templatePreview.fonts.default_size_pt}pt`) : null,
+                              state.templatePreview.page_layout?.size && state.templatePreview.page_layout.size !== "unknown" ? h("span", {}, `Page: ${state.templatePreview.page_layout.size}`) : null,
+                              state.templatePreview.page_layout?.orientation && state.templatePreview.page_layout.orientation !== "unknown" ? h("span", {}, state.templatePreview.page_layout.orientation) : null,
+                            ])
+                          : null,
+                        ...(state.templatePreview.sections || []).map((s: any) =>
+                          h("div", { style: "margin-bottom:8px" }, [
+                            s.heading ? h("div", { style: `font-weight:600;font-size:.8rem;color:#374151;margin-bottom:3px;padding-left:${((s.level || 1) - 1) * 12}px` }, s.heading) : null,
+                            s.row_count ? h("span", { style: "font-size:.72rem;color:#9ca3af;margin-left:4px" }, ` (${s.row_count}×${s.col_count})`) : null,
+                            ...(s.elements || []).map((e: any) => {
+                              if (e.type === "field") return h("div", { style: "padding:2px 0 2px 12px;color:#6366f1;font-size:.78rem" }, `📝 ${e.label || "Field"}: ___________`);
+                              if (e.type === "checkbox") return h("div", { style: "padding:2px 0 2px 12px;font-size:.78rem" }, `☐ ${e.label}`);
+                              if (e.type === "bullet") return h("div", { style: "padding:1px 0 1px 16px;font-size:.78rem;color:#4b5563" }, `• ${e.text}`);
+                              if (e.type === "signature_line") return h("div", { style: "padding:2px 0 2px 12px;color:#9ca3af;font-size:.78rem" }, "✍️ Signature line");
+                              if (e.type === "table_header") return h("div", { style: "padding:2px 0 2px 12px;font-size:.75rem;color:#6366f1;font-family:monospace" }, `┃ ${(e.columns || []).join(" │ ")}`);
+                              if (e.type === "table_row") return h("div", { style: "padding:1px 0 1px 12px;font-size:.75rem;color:#6b7280;font-family:monospace" }, `│ ${(e.cells || []).join(" │ ")}`);
+                              if (e.type === "index_row") return h("div", { style: "display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:1px 0 1px 12px;font-size:.75rem;font-family:monospace" },
+                                (e.columns || []).map((col: any) => {
+                                  if (!col) return h("span", {});
+                                  if (col.letter) return h("span", { style: "font-weight:700;color:#6366f1" }, col.letter);
+                                  if (col.entry) return h("span", { style: "color:#374151" }, col.entry);
+                                  return h("span", {}, String(col));
+                                }),
+                              );
+                              if (e.type === "note") return h("div", { style: "padding:1px 0 1px 12px;font-size:.72rem;color:#9ca3af;font-style:italic" }, e.text);
+                              if (e.type === "paragraph") return h("div", { style: "padding:1px 0 1px 12px;font-size:.78rem;color:#4b5563" }, e.text);
+                              return null;
+                            }),
+                          ]),
+                        ),
+                        ],
+                      ])
+                    : null,
+                ])
+              : null,
+
+            // Diagnostic panel
+            state.mode === "diagnostic"
+              ? h("div", { class: "create-panel" }, [
+                  h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
+                    h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Template Fill Diagnostic"),
+                  ]),
+                  // Template selector + prompt
+                  h("div", { style: "display:flex;gap:8px;margin-bottom:12px" }, [
+                    h("select", {
+                      class: "config-input",
+                      style: "width:200px",
+                      value: state.selectedTemplateId,
+                      onChange: (e: Event) => { state.selectedTemplateId = (e.target as HTMLSelectElement).value; },
+                    }, [
+                      h("option", { value: "" }, "— Select template —"),
+                      ...state.templates.map((t: any) => h("option", { value: t.template_id }, t.name)),
+                    ]),
+                    h("input", {
+                      class: "search-input",
+                      style: "flex:1",
+                      placeholder: "Fill prompt (e.g. 'Write about HOA governance for Centerpointe Community')",
+                      value: (state as any).diagPrompt || "",
+                      onInput: (e: Event) => { (state as any).diagPrompt = (e.target as HTMLInputElement).value; },
+                    }),
+                    h("button", {
+                      class: "btn btn-primary btn-sm",
+                      disabled: !state.selectedTemplateId || !(state as any).diagPrompt || (state as any).diagLoading,
+                      onClick: async () => {
+                        (state as any).diagLoading = true;
+                        (state as any).diagError = "";
+                        try {
+                          // 1. Get original template structure
+                          const structResp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}`);
+                          const tmplData = await structResp.json();
+                          (state as any).diagOriginal = tmplData.structure;
+
+                          // 2. Get fill schema (analyze)
+                          const schemaResp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}/analyze`, { method: "POST" });
+                          if (schemaResp.ok) {
+                            (state as any).diagSchema = await schemaResp.json();
+                          } else {
+                            (state as any).diagSchema = { note: "Analyze endpoint not available — using stored structure" };
+                          }
+
+                          // 3. Fill and get result
+                          const fillResp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}/fill`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prompt: (state as any).diagPrompt }),
+                          });
+                          if (fillResp.ok) {
+                            const blob = await fillResp.blob();
+                            (state as any).diagFilledUrl = URL.createObjectURL(blob);
+                            (state as any).diagFilledSize = (blob.size / 1024).toFixed(1);
+                            (state as any).diagFilled = true;
+                          } else {
+                            const err = await fillResp.json();
+                            (state as any).diagError = err.detail || "Fill failed";
+                          }
+                        } catch (e: any) {
+                          (state as any).diagError = e.message;
+                        } finally {
+                          (state as any).diagLoading = false;
+                        }
+                      },
+                    }, (state as any).diagLoading ? "Running..." : "▶ Run Diagnostic"),
+                  ]),
+                  (state as any).diagError
+                    ? h("div", { class: "status status-error", style: "margin-bottom:8px" }, (state as any).diagError)
+                    : null,
+                  // Three-panel view
+                  h("div", { style: "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px" }, [
+                    // Panel 1: Original Template
+                    h("div", { style: "border:1px solid #e5e7eb;border-radius:8px;overflow:hidden" }, [
+                      h("div", { style: "background:#f8fafc;padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:.75rem;font-weight:600;color:#6366f1" }, "① Original Template"),
+                      h("div", { style: "padding:10px;max-height:400px;overflow-y:auto;font-size:.72rem;font-family:'Courier New',monospace;line-height:1.6" },
+                        (state as any).diagOriginal
+                          ? [
+                              h("div", { style: "margin-bottom:6px;color:#9ca3af" }, `Type: ${(state as any).diagOriginal.type || "?"} | Format: ${(state as any).diagOriginal.source_format || "?"}`),
+                              h("div", { style: "margin-bottom:6px;color:#9ca3af" }, `Fonts: ${JSON.stringify((state as any).diagOriginal.fonts || {})}`),
+                              h("div", { style: "margin-bottom:6px;color:#9ca3af" }, `Layout: ${JSON.stringify((state as any).diagOriginal.page_layout || {})}`),
+                              ...((state as any).diagOriginal.sections || []).map((s: any) =>
+                                h("div", { style: "margin-bottom:4px" }, [
+                                  s.heading ? h("div", { style: "font-weight:600;color:#374151" }, s.heading) : null,
+                                  ...(s.elements || []).slice(0, 3).map((e: any) =>
+                                    h("div", { style: "color:#6b7280;padding-left:8px" }, `${e.type}: ${(e.text || e.label || "").substring(0, 50)}`),
+                                  ),
+                                  (s.elements || []).length > 3 ? h("div", { style: "color:#9ca3af;padding-left:8px" }, `+${s.elements.length - 3} more`) : null,
+                                ]),
+                              ),
+                            ]
+                          : [h("div", { style: "color:#9ca3af;text-align:center;padding:20px" }, "Run diagnostic to see template structure")],
+                      ),
+                    ]),
+                    // Panel 2: Fill Schema (Intermediate)
+                    h("div", { style: "border:1px solid #e5e7eb;border-radius:8px;overflow:hidden" }, [
+                      h("div", { style: "background:#f8fafc;padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:.75rem;font-weight:600;color:#f59e0b" }, "② Fill Schema (Intermediate)"),
+                      h("div", { style: "padding:10px;max-height:400px;overflow-y:auto;font-size:.72rem;font-family:'Courier New',monospace;line-height:1.6" },
+                        (state as any).diagSchema
+                          ? [h("pre", { style: "margin:0;white-space:pre-wrap;word-break:break-word;color:#374151" }, JSON.stringify((state as any).diagSchema, null, 2).substring(0, 3000))]
+                          : [h("div", { style: "color:#9ca3af;text-align:center;padding:20px" }, "Run diagnostic to see fill schema")],
+                      ),
+                    ]),
+                    // Panel 3: Filled Result
+                    h("div", { style: "border:1px solid #e5e7eb;border-radius:8px;overflow:hidden" }, [
+                      h("div", { style: "background:#f8fafc;padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:.75rem;font-weight:600;color:#16a34a" }, "③ Filled Result"),
+                      h("div", { style: "padding:10px;max-height:400px;overflow-y:auto;font-size:.72rem;line-height:1.6" },
+                        (state as any).diagFilled
+                          ? [
+                              h("div", { style: "text-align:center;padding:12px" }, [
+                                h("div", { style: "font-size:2rem;margin-bottom:8px" }, "📄"),
+                                h("div", { style: "font-weight:600;color:#374151;margin-bottom:4px" }, `Filled document (${(state as any).diagFilledSize} KB)`),
+                                h("a", {
+                                  href: (state as any).diagFilledUrl,
+                                  download: "diagnostic_filled.docx",
+                                  class: "btn btn-sm btn-primary",
+                                  style: "display:inline-block;margin-top:8px;text-decoration:none",
+                                }, "⬇ Download .docx"),
+                              ]),
+                            ]
+                          : (state as any).diagError
+                            ? [h("div", { style: "color:#dc2626;text-align:center;padding:20px" }, (state as any).diagError)]
+                            : [h("div", { style: "color:#9ca3af;text-align:center;padding:20px" }, "Run diagnostic to generate filled document")],
+                      ),
+                    ]),
+                  ]),
                 ])
               : null,
 
@@ -1192,7 +1527,7 @@ createApp({
                       ...Object.entries(state.configEdits).map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
                         const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
 
@@ -1201,6 +1536,7 @@ createApp({
                             "BEDROCK_MODEL_ID": "Ask AI Model",
                             "BEDROCK_GENERATE_MODEL_ID": "Create Document Model",
                             "BEDROCK_DETECT_MODEL_ID": "Format Detection Model",
+                            "BEDROCK_TEMPLATE_MODEL_ID": "Template Extraction Model",
                             "BEDROCK_VISION_MODEL_ID": "Vision OCR Model",
                             "AWS_REGION": "AWS Region",
                             "BOOKSTACK_URL": "BookStack URL",
@@ -1343,7 +1679,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -1565,6 +1901,11 @@ createApp({
                                     }, d.status),
                                     h("button", {
                                       class: "btn-view",
+                                      title: "Preview document",
+                                      onClick: () => previewDoc(d),
+                                    }, "📄"),
+                                    h("button", {
+                                      class: "btn-view",
                                       title: "View extracted text",
                                       onClick: () => viewDoc(d.document_id),
                                     }, (state as any)[`view_${d.document_id}`] ? "🙈" : "👁"),
@@ -1588,6 +1929,49 @@ createApp({
                 ),
           ]),
         ]),
+        // Preview modal
+        (state as any).previewDoc
+          ? h("div", { class: "preview-overlay", onClick: (e: Event) => { if (e.target === e.currentTarget) (state as any).previewDoc = null; } }, [
+              h("div", { class: "preview-modal" }, [
+                h("div", { class: "preview-header" }, [
+                  h("span", { class: "preview-title" }, (state as any).previewDoc.title),
+                  h("button", { class: "preview-close", onClick: () => (state as any).previewDoc = null }, "✕"),
+                ]),
+                h("div", {
+                  class: (state as any).previewExt === "docx" || (state as any).previewExt === "doc" ? "preview-body preview-docx" : "preview-body",
+                  ref: (el: any) => {
+                    if (!el) return;
+                    const ext = (state as any).previewExt;
+                    const docId = (state as any).previewDoc?.document_id;
+                    if (!docId) return;
+                    if (ext === "docx" || ext === "doc") {
+                      if (el.dataset.loaded === docId) return;
+                      el.dataset.loaded = docId;
+                      el.innerHTML = "<p style='color:#9ca3af;font-size:.85rem'>Loading preview...</p>";
+                      fetch(`${apiBase}/documents/${docId}/file`)
+                        .then(r => r.blob())
+                        .then(blob => { el.innerHTML = ""; return renderAsync(blob, el); })
+                        .catch(() => { el.innerHTML = "<p style='color:#dc2626'>Failed to load preview</p>"; });
+                    } else if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "tiff" || ext === "tif") {
+                      if (el.dataset.loaded === docId) return;
+                      el.dataset.loaded = docId;
+                      el.innerHTML = "";
+                      const img = document.createElement("img");
+                      img.src = `${apiBase}/documents/${docId}/preview`;
+                      el.appendChild(img);
+                    } else {
+                      if (el.dataset.loaded === docId) return;
+                      el.dataset.loaded = docId;
+                      el.innerHTML = "";
+                      const iframe = document.createElement("iframe");
+                      iframe.src = `${apiBase}/documents/${docId}/preview`;
+                      el.appendChild(iframe);
+                    }
+                  },
+                }),
+              ]),
+            ])
+          : null,
       ]);
   },
 }).mount("#app");

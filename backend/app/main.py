@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -318,6 +319,47 @@ def get_document_file(document_id: str):
         filename=doc.title,
         media_type="application/octet-stream",
     )
+
+
+@app.get("/documents/{document_id}/preview")
+def get_document_preview(document_id: str):
+    """Return a previewable version: PDF for office docs, original for PDF/images."""
+    import subprocess
+
+    from fastapi.responses import FileResponse
+
+    doc = store.get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not os.path.isfile(doc.source_url):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    ext = os.path.splitext(doc.source_url)[1].lower()
+
+    if ext == ".pdf":
+        return FileResponse(doc.source_url, media_type="application/pdf")
+    if ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif"):
+        mime_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                    "tiff": "image/tiff", "tif": "image/tiff"}
+        return FileResponse(doc.source_url, media_type=mime_map.get(ext.lstrip("."), "image/png"))
+
+    # PPTX/DOCX → convert to PDF via LibreOffice (cached)
+    pdf_path = doc.source_url + ".preview.pdf"
+    if not os.path.isfile(pdf_path):
+        out_dir = os.path.dirname(doc.source_url)
+        result = subprocess.run(
+            ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", out_dir, doc.source_url],
+            capture_output=True, timeout=60,
+        )
+        generated = os.path.splitext(doc.source_url)[0] + ".pdf"
+        if os.path.isfile(generated):
+            os.rename(generated, pdf_path)
+        elif result.returncode != 0:
+            raise HTTPException(status_code=500, detail="Preview conversion failed")
+
+    if not os.path.isfile(pdf_path):
+        raise HTTPException(status_code=500, detail="Preview conversion failed")
+    return FileResponse(pdf_path, media_type="application/pdf")
 
 
 @app.get("/documents/{document_id}/chunks", response_model=ChunkListResponse)
@@ -686,17 +728,27 @@ async def extract_template_endpoint(file: UploadFile = File(...), name: str = ""
 
     structure = extract_template(content, filename)
 
-    # Save to database
+    # Analyze fill map for DOCX templates
+    ext = Path(filename).suffix.lower()
+    if ext in (".docx", ".doc"):
+        from .template_fill_engine import analyze
+        structure["fill_map"] = analyze(content)
+
+    # Derive template name from filename (clean it up)
+    if not name:
+        stem = Path(filename).stem
+        name = stem.replace("_", " ").replace("-", " ").strip().title()
+
     template_id = store.new_id("tmpl")
-    template_name = name or structure.get("title", filename)
     store.save_template(
         template_id=template_id,
-        name=template_name,
+        name=name,
         source_format=structure.get("source_format", "unknown"),
         structure=structure,
+        file_bytes=content,
     )
 
-    return {"template_id": template_id, "name": template_name, "structure": structure}
+    return {"template_id": template_id, "name": name, "structure": structure}
 
 
 @app.get("/templates")
@@ -711,7 +763,84 @@ def get_template(template_id: str):
     tmpl = store.get_template(template_id)
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
+    # Remove non-serializable fields
+    tmpl.pop("file_bytes", None)
     return tmpl
+
+
+@app.get("/templates/{template_id}/export")
+def export_template(template_id: str, format: str = "json"):
+    """Export a template as JSON or XML."""
+    from fastapi.responses import Response
+
+    tmpl = store.get_template(template_id)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    structure = tmpl.get("structure", {})
+    name = tmpl.get("name", "template").replace(" ", "_")
+
+    if format == "xml":
+        xml = _structure_to_xml(structure)
+        return Response(content=xml, media_type="application/xml",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.template.xml"'})
+
+    import json as json_mod
+    content = json_mod.dumps(structure, indent=2)
+    return Response(content=content, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.template.json"'})
+
+
+def _structure_to_xml(structure: dict) -> str:
+    """Convert template structure dict to XML."""
+    from xml.etree.ElementTree import Element, SubElement, tostring
+    from xml.dom.minidom import parseString
+
+    root = Element("template")
+    root.set("type", structure.get("type", "document"))
+    root.set("title", structure.get("title", ""))
+    root.set("source_format", structure.get("source_format", ""))
+
+    if structure.get("fonts"):
+        fonts_el = SubElement(root, "fonts")
+        for k, v in structure["fonts"].items():
+            fonts_el.set(k, str(v))
+
+    if structure.get("page_layout"):
+        layout_el = SubElement(root, "page_layout")
+        pl = structure["page_layout"]
+        if pl.get("size"):
+            layout_el.set("size", pl["size"])
+        if pl.get("orientation"):
+            layout_el.set("orientation", pl["orientation"])
+        if pl.get("margins"):
+            margins_el = SubElement(layout_el, "margins")
+            for k, v in pl["margins"].items():
+                margins_el.set(k, str(v))
+
+    sections_el = SubElement(root, "sections")
+    for section in structure.get("sections", []):
+        sec_el = SubElement(sections_el, "section")
+        if section.get("heading"):
+            sec_el.set("heading", section["heading"])
+        if section.get("style"):
+            sec_el.set("style", section["style"])
+        if section.get("row_count"):
+            sec_el.set("row_count", str(section["row_count"]))
+        for element in section.get("elements", []):
+            el = SubElement(sec_el, element.get("type", "element"))
+            for k, v in element.items():
+                if k == "type":
+                    continue
+                if isinstance(v, list):
+                    el.set(k, " | ".join(str(c) for c in v))
+                elif isinstance(v, bool):
+                    el.set(k, str(v).lower())
+                else:
+                    el.set(k, str(v))
+
+    raw = tostring(root, encoding="unicode")
+    return parseString(raw).toprettyxml(indent="  ")
 
 
 @app.delete("/templates/{template_id}")
@@ -720,6 +849,125 @@ def delete_template(template_id: str):
     if not store.delete_template(template_id):
         raise HTTPException(status_code=404, detail="Template not found")
     return {"deleted": template_id}
+
+
+@app.post("/templates/{template_id}/analyze")
+def analyze_template(template_id: str):
+    """Return the fill schema for a template (intermediate representation)."""
+    from .template_fill_engine import analyze
+
+    file_bytes = _get_template_file_bytes(template_id)
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Template has no stored file")
+    return analyze(file_bytes)
+
+
+@app.post("/templates/{template_id}/fill")
+async def fill_template(template_id: str, request: dict):
+    """Fill a template with AI-generated content based on a prompt and indexed documents.
+
+    Uses the TemplateFillEngine: analyze → generate → apply.
+    Request body: {"prompt": "Write a thesis about...", "document_ids": [...] (optional)}
+    Returns the filled document as a downloadable file.
+    """
+    from fastapi.responses import Response
+    from .template_fill_engine import analyze, generate_sectioned, apply_full
+    from .template_content_generator import generate_content
+
+    prompt = request.get("prompt", "")
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    tmpl = store.get_template(template_id)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    file_bytes = _get_template_file_bytes(template_id)
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Template has no stored file. Re-import the template.")
+
+    source_format = tmpl.get("source_format", "docx")
+    if source_format not in ("docx", "doc"):
+        raise HTTPException(status_code=400, detail="Template fill only supports DOCX templates")
+
+    # Search indexed documents for relevant content
+    doc_ids = request.get("document_ids")
+    from .schemas import SearchRequest
+    search_payload = SearchRequest(query=prompt, filters={"document_ids": doc_ids} if doc_ids else {}, page=1, page_size=15)
+    search_response = run_search(store, search_payload)
+    context_chunks = "\n\n".join(f"[{r.title}]: {r.snippet}" for r in search_response.results)
+
+    # Get document titles for bibliography
+    all_docs = store.list_documents()
+    doc_titles = [d.title for d in all_docs if any(x in (d.category or "").lower() for x in ["hoa", "governance"])
+                  or any(x in (d.document_type or "").lower() for x in ["architectural", "rules", "bylaws", "ccrs", "meeting", "resolution", "hoa"])]
+
+    # 1. GENERATE — section-by-section decision loop with validation
+    content = generate_content(prompt, context_chunks, doc_titles)
+    if not content:
+        raise HTTPException(status_code=500, detail="Failed to generate content for template fields")
+
+    # 2. APPLY — map content package to template structure
+    # Convert content package to the format apply_full expects
+    fill_data = _content_to_fill_data(content)
+    filled_bytes = apply_full(file_bytes, fill_data)
+
+    name = tmpl.get("name", "filled_template").replace(" ", "_")
+    return Response(
+        content=filled_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{name}_filled.docx"'},
+    )
+
+
+def _get_template_file_bytes(template_id: str) -> bytes | None:
+    """Get the stored file bytes for a template."""
+    from .db import get_conn
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT file_bytes FROM templates WHERE template_id = %s", (template_id,))
+            row = cur.fetchone()
+            if row and row[0]:
+                return bytes(row[0])
+    finally:
+        conn.close()
+    return None
+
+
+def _content_to_fill_data(content: dict) -> dict:
+    """Convert content generator output to the format apply_full expects."""
+    tp = content.get("title_page", {})
+    abstract = content.get("abstract", {})
+    ack = content.get("acknowledgments", {})
+    glossary = content.get("glossary", [])
+    chapter = content.get("chapter", {})
+
+    return {
+        "title": {
+            "title": tp.get("title_runs", ["HOA", "", "Governance"]),
+            "author": tp.get("author_runs", ["by", "Patrick Flanigan"]),
+            "description": tp.get("description_runs", ["A guide to HOA governance", ""]),
+            "institution": tp.get("institution_runs", ["Centerpointe", " ", "Community"]),
+            "year": tp.get("year", "2026"),
+            "committee": tp.get("committee", "HOA Board of Directors"),
+            "program": tp.get("program", "Community Governance"),
+            "date": tp.get("date", "May 2026"),
+            "institution2": tp.get("institution", "Centerpointe Community"),
+        },
+        "abstract": {
+            "title": abstract.get("title", tp.get("title", "HOA Governance")),
+            "author": f"By {tp.get('author', 'Patrick Flanigan')}",
+            "body": abstract.get("body", ""),
+        },
+        "ack": ack,
+        "glossary": glossary if isinstance(glossary, list) else glossary.get("terms", []),
+        "chapter": chapter,
+        "toc_entries": content.get("toc", []),
+        "figure_entries": content.get("figures", []),
+        "bib_entries": content.get("bibliography", []),
+        "index_entries": content.get("index", []),
+    }
 
 
 @app.get("/admin/jobs", response_model=list[JobResponse])
@@ -1131,11 +1379,13 @@ def admin_get_config():
     vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", qa_model)
     detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", qa_model)
+    template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", qa_model)
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
         "BEDROCK_GENERATE_MODEL_ID": gen_model,
         "BEDROCK_DETECT_MODEL_ID": detect_model,
+        "BEDROCK_TEMPLATE_MODEL_ID": template_model,
         "BEDROCK_VISION_MODEL_ID": vision_model,
         "OPENSEARCH_HOST": os.getenv("OPENSEARCH_HOST", "localhost"),
         "OPENSEARCH_PORT": os.getenv("OPENSEARCH_PORT", "9200"),
@@ -1158,6 +1408,7 @@ def admin_update_config(updates: dict):
         "BEDROCK_MODEL_ID",
         "BEDROCK_GENERATE_MODEL_ID",
         "BEDROCK_DETECT_MODEL_ID",
+        "BEDROCK_TEMPLATE_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",
         "BOOKSTACK_URL",
         "BOOKSTACK_TOKEN_ID",

@@ -14,6 +14,7 @@ ENV IMAGE_TAG=${IMAGE_TAG} BUILD_DATE=${BUILD_DATE} GIT_HASH=${GIT_HASH}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     pandoc \
+    libreoffice-nogui \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt

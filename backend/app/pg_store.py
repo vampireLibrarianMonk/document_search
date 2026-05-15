@@ -282,18 +282,18 @@ class PgStore:
 
     # -- Templates --
 
-    def save_template(self, template_id: str, name: str, source_format: str, structure: dict) -> None:
+    def save_template(self, template_id: str, name: str, source_format: str, structure: dict, file_bytes: bytes = None) -> None:
         import json as _json
 
         conn = get_conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO templates (template_id, name, source_format, structure)
-                       VALUES (%s, %s, %s, %s)
+                    """INSERT INTO templates (template_id, name, source_format, structure, file_bytes)
+                       VALUES (%s, %s, %s, %s, %s)
                        ON CONFLICT (template_id) DO UPDATE SET
-                         name=EXCLUDED.name, structure=EXCLUDED.structure""",
-                    (template_id, name, source_format, _json.dumps(structure)),
+                         name=EXCLUDED.name, structure=EXCLUDED.structure, file_bytes=EXCLUDED.file_bytes""",
+                    (template_id, name, source_format, _json.dumps(structure), file_bytes),
                 )
         finally:
             conn.close()

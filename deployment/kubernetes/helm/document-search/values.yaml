@@ -11,8 +11,9 @@ api:
     DATA_DIR: /app/data
     AWS_REGION: us-east-1
     BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
-    BEDROCK_GENERATE_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+    BEDROCK_GENERATE_MODEL_ID: anthropic.claude-3-sonnet-20240229-v1:0
     BEDROCK_VISION_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+    BEDROCK_TEMPLATE_MODEL_ID: anthropic.claude-3-sonnet-20240229-v1:0
     TRACK_USAGE: "true"
     WORKER_CONCURRENCY: "3"
     MAX_WORKER_CONCURRENCY: "6"
