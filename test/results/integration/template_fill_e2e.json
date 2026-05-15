@@ -1,0 +1,285 @@
+{
+  "run_date": "2026-05-15T08:14:17.019886",
+  "results": [
+    {
+      "model": "haiku3",
+      "prompt": "hoa",
+      "time": 13.2,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "haiku3",
+      "prompt": "ai",
+      "time": 12.4,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "sonnet3",
+      "prompt": "hoa",
+      "time": 18.6,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "sonnet3",
+      "prompt": "ai",
+      "time": 25.9,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "nova_pro",
+      "prompt": "hoa",
+      "time": 5.8,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "nova_pro",
+      "prompt": "ai",
+      "time": 6.7,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "nemotron_super",
+      "prompt": "hoa",
+      "time": 7.8,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "nemotron_super",
+      "prompt": "ai",
+      "time": 9.7,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "mistral_large",
+      "prompt": "hoa",
+      "time": 9.5,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "mistral_large",
+      "prompt": "ai",
+      "time": 14.4,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "deepseek_v3",
+      "prompt": "hoa",
+      "time": 15.5,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "deepseek_v3",
+      "prompt": "ai",
+      "time": 12.1,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "gpt_oss_120b",
+      "prompt": "hoa",
+      "time": 30.0,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    },
+    {
+      "model": "gpt_oss_120b",
+      "prompt": "ai",
+      "time": 28.0,
+      "content": {
+        "score": 25,
+        "max": 25
+      },
+      "format": {
+        "score": 25,
+        "max": 25
+      },
+      "location": {
+        "score": 25,
+        "max": 25
+      },
+      "total": 75,
+      "max": 75,
+      "pct": 100.0
+    }
+  ]
+}

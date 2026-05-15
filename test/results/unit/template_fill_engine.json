@@ -1,0 +1,62 @@
+[
+  {
+    "test": "trunc_short",
+    "pass": true,
+    "detail": "HOA"
+  },
+  {
+    "test": "trunc_at_word",
+    "pass": true,
+    "detail": "HOA Governance"
+  },
+  {
+    "test": "trunc_exact",
+    "pass": true,
+    "detail": "exactly15chars!"
+  },
+  {
+    "test": "preserves_image",
+    "pass": true,
+    "detail": "image in ZIP"
+  },
+  {
+    "test": "removes_macrobuttons",
+    "pass": true,
+    "detail": "0 macros"
+  },
+  {
+    "test": "preserves_page_breaks",
+    "pass": true,
+    "detail": "\u22657 breaks"
+  },
+  {
+    "test": "title_table_14_rows",
+    "pass": true,
+    "detail": "14 rows"
+  },
+  {
+    "test": "no_professor_janessa",
+    "pass": true,
+    "detail": "static replaced"
+  },
+  {
+    "test": "no_supervisory_committee",
+    "pass": true,
+    "detail": "static replaced"
+  },
+  {
+    "test": "no_glenwood",
+    "pass": true,
+    "detail": "no artifact"
+  },
+  {
+    "test": "no_diert_maage",
+    "pass": true,
+    "detail": "no artifact"
+  },
+  {
+    "test": "has_replacement_content",
+    "pass": true,
+    "detail": "content present"
+  }
+]

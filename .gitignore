@@ -39,3 +39,8 @@ infra/docker/certs/*.pem
 local.env
 deployment/docker/local.env
 deployment/kubernetes/helm/local.env
+
+# Allow test template fixtures and filled results
+!test/template_*.docx
+!test/template_*.pdf
+!test/results/filled/*.docx

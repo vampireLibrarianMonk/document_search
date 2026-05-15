@@ -267,50 +267,52 @@ def apply_full(docx_bytes: bytes, content: dict) -> bytes:
         root = etree.fromstring(doc_xml)
         body = root.find(f"{WNS}body")
 
-        title = content["title"]
-        abstract = content["abstract"]
-        ack = content["ack"]
-        glossary = content["glossary"]
-        chapter = content["chapter"]
-        bib_entries = content["bib_entries"]
-        index_entries = content["index_entries"]
-        toc_entries = content["toc_entries"]
-        figure_entries = content["figure_entries"]
+        title = content.get("title", {})
+        abstract = content.get("abstract", {})
+        ack = content.get("ack", {})
+        glossary = content.get("glossary", [])
+        chapter = content.get("chapter", {})
+        bib_entries = content.get("bib_entries", [])
+        index_entries = content.get("index_entries", [])
+        toc_entries = content.get("toc_entries", [])
+        figure_entries = content.get("figure_entries", [])
 
-        # === 1. REPLACE SDTs ===
-        sdt_idx = 0
-        for sdt in root.findall(f".//{WNS}sdt"):
-            sdt_pr = sdt.find(f"{WNS}sdtPr")
-            if sdt_pr is None or sdt_pr.find(f"{WNS}showingPlcHdr") is None:
-                continue
-            sdt_idx += 1
-            runs = sdt.findall(f".//{WNS}r")
+        # Count placeholder SDTs to determine template type
+        placeholder_count = sum(1 for sdt in root.findall(f".//{WNS}sdt")
+                                if sdt.find(f"{WNS}sdtPr") is not None and 
+                                sdt.find(f"{WNS}sdtPr").find(f"{WNS}showingPlcHdr") is not None)
 
-            # Determine replacement
-            r = _get_sdt_replacement(sdt_idx, title, abstract, ack, glossary, chapter, index_entries, toc_entries, figure_entries, runs)
+        # === 1. REPLACE SDTs (only for templates with many placeholders like template_1) ===
+        if placeholder_count >= 20:
+            sdt_idx = 0
+            for sdt in root.findall(f".//{WNS}sdt"):
+                sdt_pr = sdt.find(f"{WNS}sdtPr")
+                if sdt_pr is None or sdt_pr.find(f"{WNS}showingPlcHdr") is None:
+                    continue
+                sdt_idx += 1
+                runs = sdt.findall(f".//{WNS}r")
 
-            if r == "__SKIP__":
-                # Just remove placeholder flag
+                # Determine replacement
+                r = _get_sdt_replacement(sdt_idx, title, abstract, ack, glossary, chapter, index_entries, toc_entries, figure_entries, runs)
+
+                if r == "__SKIP__":
+                    _remove_plc_flag(sdt_pr)
+                    continue
+                if r == "__TOC__":
+                    _fill_non_empty_runs(runs, toc_entries)
+                    _remove_plc_flag(sdt_pr)
+                    continue
+                if r == "__FIGS__":
+                    _fill_non_empty_runs(runs, figure_entries)
+                    _remove_plc_flag(sdt_pr)
+                    continue
+                if r is None:
+                    continue
+
+                orig_chars_map = {1: 11, 2: 13, 3: 110, 4: 19, 5: 4, 7: 36, 8: 23, 10: 4}
+                orig_chars = orig_chars_map.get(sdt_idx, 0)
+                _set_sdt_content(runs, r, original_chars=orig_chars, base_size_half_pts=24)
                 _remove_plc_flag(sdt_pr)
-                continue
-            if r == "__TOC__":
-                _fill_non_empty_runs(runs, toc_entries)
-                _remove_plc_flag(sdt_pr)
-                continue
-            if r == "__FIGS__":
-                _fill_non_empty_runs(runs, figure_entries)
-                _remove_plc_flag(sdt_pr)
-                continue
-            if r is None:
-                continue
-
-            # For title page SDTs (1-10), apply font scaling if text is longer than original
-            # Original sizes: SDT1=11chars, SDT2=13, SDT3=110, SDT4=19, SDT7=36, SDT8=23
-            # Base font: 24 half-points (12pt) from document default
-            orig_chars_map = {1: 11, 2: 13, 3: 110, 4: 19, 5: 4, 7: 36, 8: 23, 10: 4}
-            orig_chars = orig_chars_map.get(sdt_idx, 0)
-            _set_sdt_content(runs, r, original_chars=orig_chars, base_size_half_pts=24)
-            _remove_plc_flag(sdt_pr)
 
         # === 2. REMOVE MACROBUTTON FIELDS ===
         for p in list(root.findall(f".//{WNS}p")):

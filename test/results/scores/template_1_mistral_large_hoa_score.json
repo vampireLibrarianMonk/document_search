@@ -1,0 +1,19 @@
+{
+  "model": "mistral.mistral-large-3-675b-instruct",
+  "prompt": "hoa",
+  "content": {
+    "score": 25,
+    "max": 25
+  },
+  "format": {
+    "score": 25,
+    "max": 25
+  },
+  "location": {
+    "score": 25,
+    "max": 25
+  },
+  "total": 75,
+  "max": 75,
+  "pct": 100.0
+}

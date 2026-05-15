@@ -1,0 +1,82 @@
+[
+  {
+    "test": "template_1_docx_finds_all_sdts",
+    "pass": true,
+    "detail": "sections=13"
+  },
+  {
+    "test": "template_1_docx_detects_fonts_heading",
+    "pass": true,
+    "detail": "Franklin Gothic Demi"
+  },
+  {
+    "test": "template_1_docx_detects_fonts_body",
+    "pass": true,
+    "detail": "Franklin Gothic Book"
+  },
+  {
+    "test": "template_1_docx_detects_page_size",
+    "pass": true,
+    "detail": "8.5x11.0"
+  },
+  {
+    "test": "template_1_docx_detects_margins",
+    "pass": true,
+    "detail": "{'top': 0.75, 'bottom': 0.44, 'left': 1.5, 'right': 1.5}"
+  },
+  {
+    "test": "template_1_docx_type_is_form",
+    "pass": true,
+    "detail": "form"
+  },
+  {
+    "test": "template_1_docx_has_fill_in_count",
+    "pass": true,
+    "detail": "45"
+  },
+  {
+    "test": "template_1_docx_has_toc",
+    "pass": true,
+    "detail": "{'has_table_of_contents': True, 'has_headers_footers': False}"
+  },
+  {
+    "test": "template_1_docx_sections_ge_10",
+    "pass": true,
+    "detail": "13"
+  },
+  {
+    "test": "template_1_docx_has_table_count",
+    "pass": true,
+    "detail": "3"
+  },
+  {
+    "test": "template_2_docx_type_is_form",
+    "pass": false,
+    "detail": "document"
+  },
+  {
+    "test": "template_2_docx_title_checklist",
+    "pass": false,
+    "detail": "Determine why you want to start a business"
+  },
+  {
+    "test": "template_2_docx_has_tables",
+    "pass": true,
+    "detail": "7"
+  },
+  {
+    "test": "template_3_docx_has_12_tables",
+    "pass": true,
+    "detail": "12"
+  },
+  {
+    "test": "template_1_pdf_pdf_has_sections",
+    "pass": true,
+    "detail": "7"
+  },
+  {
+    "test": "template_1_pdf_pdf_has_page_count",
+    "pass": true,
+    "detail": "10"
+  }
+]

@@ -1,0 +1,193 @@
+{
+  "run_date": "2026-05-15T08:17:19.299884",
+  "passed": 29,
+  "total": 29,
+  "results": [
+    {
+      "test": "health",
+      "pass": true,
+      "status": 200,
+      "time": 0.014,
+      "detail": "status=200, 15 bytes"
+    },
+    {
+      "test": "root",
+      "pass": true,
+      "status": 200,
+      "time": 0.01,
+      "detail": "status=200, 54 bytes"
+    },
+    {
+      "test": "documents_list",
+      "pass": true,
+      "status": 200,
+      "time": 0.033,
+      "detail": "status=200, 40496 bytes"
+    },
+    {
+      "test": "documents_get_404",
+      "pass": true,
+      "status": 404,
+      "time": 0.029,
+      "detail": "status=404, 31 bytes"
+    },
+    {
+      "test": "search",
+      "pass": true,
+      "status": 200,
+      "time": 0.044,
+      "detail": "status=200, 3019 bytes"
+    },
+    {
+      "test": "ask",
+      "pass": true,
+      "status": 200,
+      "time": 3.035,
+      "detail": "status=200, 8893 bytes"
+    },
+    {
+      "test": "admin_config_get",
+      "pass": true,
+      "status": 200,
+      "time": 0.011,
+      "detail": "status=200, 646 bytes"
+    },
+    {
+      "test": "admin_models",
+      "pass": true,
+      "status": 200,
+      "time": 0.445,
+      "detail": "status=200, 11563 bytes"
+    },
+    {
+      "test": "admin_health_check",
+      "pass": true,
+      "status": 200,
+      "time": 0.612,
+      "detail": "status=200, 566 bytes"
+    },
+    {
+      "test": "admin_usage",
+      "pass": true,
+      "status": 200,
+      "time": 0.03,
+      "detail": "status=200, 879 bytes"
+    },
+    {
+      "test": "admin_pricing",
+      "pass": true,
+      "status": 200,
+      "time": 0.008,
+      "detail": "status=200, 6295 bytes"
+    },
+    {
+      "test": "admin_jobs",
+      "pass": true,
+      "status": 200,
+      "time": 0.024,
+      "detail": "status=200, 5389 bytes"
+    },
+    {
+      "test": "admin_config_update",
+      "pass": true,
+      "status": 200,
+      "time": 0.008,
+      "detail": "status=200, 34 bytes"
+    },
+    {
+      "test": "templates_list",
+      "pass": true,
+      "status": 200,
+      "time": 0.02,
+      "detail": "status=200, 122 bytes"
+    },
+    {
+      "test": "template_import",
+      "pass": true,
+      "status": 200,
+      "time": 12.051,
+      "detail": "status=200, 18255 bytes"
+    },
+    {
+      "test": "template_get",
+      "pass": true,
+      "status": 200,
+      "time": 0.035,
+      "detail": "status=200, 18320 bytes"
+    },
+    {
+      "test": "template_analyze",
+      "pass": true,
+      "status": 200,
+      "time": 0.039,
+      "detail": "status=200, 12097 bytes"
+    },
+    {
+      "test": "template_export_json",
+      "pass": true,
+      "status": 200,
+      "time": 0.032,
+      "detail": "status=200, 28931 bytes"
+    },
+    {
+      "test": "template_export_xml",
+      "pass": true,
+      "status": 200,
+      "time": 0.042,
+      "detail": "status=200, 5915 bytes"
+    },
+    {
+      "test": "template_fill",
+      "pass": true,
+      "status": 200,
+      "time": 26.693,
+      "detail": "status=200, 1062943 bytes"
+    },
+    {
+      "test": "fill_valid_docx",
+      "pass": true,
+      "detail": "document.xml=True, image=True"
+    },
+    {
+      "test": "fill_preserves_image",
+      "pass": true,
+      "detail": "image present=True"
+    },
+    {
+      "test": "template_delete",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "test": "template_get_after_delete",
+      "pass": true,
+      "status": 404
+    },
+    {
+      "test": "upload_single",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "test": "upload_unsupported",
+      "pass": true,
+      "status": 400
+    },
+    {
+      "test": "generate",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "test": "generate_detect_format",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "test": "bookstack_sync",
+      "pass": true,
+      "status": 200
+    }
+  ],
+  "retry_date": "2026-05-15T08:18:31.157242"
+}

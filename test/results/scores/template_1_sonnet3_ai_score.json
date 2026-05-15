@@ -1,0 +1,19 @@
+{
+  "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+  "prompt": "ai",
+  "content": {
+    "score": 25,
+    "max": 25
+  },
+  "format": {
+    "score": 25,
+    "max": 25
+  },
+  "location": {
+    "score": 25,
+    "max": 25
+  },
+  "total": 75,
+  "max": 75,
+  "pct": 100.0
+}

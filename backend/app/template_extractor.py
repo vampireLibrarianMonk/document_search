@@ -691,8 +691,12 @@ def _extract_docx_template(file_bytes: bytes) -> dict:
     if current_section["heading"] or current_section["elements"]:
         sections.append(current_section)
 
-    # Determine type
-    doc_type = "form" if fill_in_count > 0 else "document"
+    # Determine type — check fill-in count AND checkbox characters in tables
+    has_checkboxes = any(
+        "☐" in ''.join(t.text or '' for t in child.findall(f'.//{wns}t'))
+        for child in body.findall(f'.//{wns}tbl')
+    )
+    doc_type = "form" if fill_in_count > 0 or has_checkboxes else "document"
 
     # Derive title from first meaningful content
     title = "Untitled"

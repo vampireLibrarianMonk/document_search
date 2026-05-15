@@ -41,16 +41,39 @@ def generate_content(prompt: str, context: str, doc_titles: list[str]) -> dict:
             messages=[{"role": "user", "content": [{"text": p}]}],
             inferenceConfig={"maxTokens": 4096},
         )
-        return resp["output"]["message"]["content"][0]["text"]
+        # Handle reasoning models (GPT-OSS) that return reasoningContent + text blocks
+        content_blocks = resp["output"]["message"]["content"]
+        for block in content_blocks:
+            if "text" in block:
+                return block["text"]
+        # Fallback: try first block's text
+        return content_blocks[0].get("text", "")
 
     def parse_json(text: str) -> dict:
         text = re.sub(r"```json\s*", "", text)
         text = re.sub(r"```\s*$", "", text)
         s = text.find("{")
+        if s < 0:
+            return {}
+        # Try parsing from the first { — find the matching closing }
+        depth = 0
+        for i in range(s, len(text)):
+            if text[i] == '{': depth += 1
+            elif text[i] == '}': depth -= 1
+            if depth == 0:
+                try:
+                    raw = json.loads(text[s:i+1])
+                    return _strip_html(raw)
+                except json.JSONDecodeError:
+                    break
+        # Fallback: try rfind
         e = text.rfind("}") + 1
-        if s >= 0 and e > s:
-            raw = json.loads(text[s:e])
-            return _strip_html(raw)
+        if e > s:
+            try:
+                raw = json.loads(text[s:e])
+                return _strip_html(raw)
+            except json.JSONDecodeError:
+                pass
         return {}
 
     # ================================================================
@@ -89,18 +112,17 @@ def generate_content(prompt: str, context: str, doc_titles: list[str]) -> dict:
 
 def _gen_title_page(ask, parse_json, prompt, context, doc_titles, prior) -> dict:
     """Generate title page fields."""
-    result = parse_json(ask(f"""Generate title page content for a thesis document.
+    result = parse_json(ask(f"""Generate title page content for a thesis/report document.
 Topic: {prompt}
-The author is Patrick Flanigan. The community is Centerpointe.
 
 Return JSON:
-{{"title": "short 2-4 word title",
- "author": "Patrick Flanigan",
+{{"title": "short 2-4 word title relevant to the topic",
+ "author": "the author's name (derive from prompt or use 'The Author')",
  "description": "One sentence (~100 chars) describing the document purpose",
- "institution": "Centerpointe Community",
+ "institution": "the relevant organization or institution name",
  "year": "2026",
- "committee": "approving body (~30 chars)",
- "program": "program name (~20 chars)",
+ "committee": "approving body or review board (~30 chars)",
+ "program": "program or department name (~20 chars)",
  "date": "May 2026"}}
 
 Context: {context[:400]}

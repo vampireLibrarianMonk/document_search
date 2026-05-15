@@ -946,7 +946,7 @@ def _content_to_fill_data(content: dict) -> dict:
     return {
         "title": {
             "title": tp.get("title_runs", ["HOA", "", "Governance"]),
-            "author": tp.get("author_runs", ["by", "Patrick Flanigan"]),
+            "author": tp.get("author_runs", ["by", "The Author"]),
             "description": tp.get("description_runs", ["A guide to HOA governance", ""]),
             "institution": tp.get("institution_runs", ["Centerpointe", " ", "Community"]),
             "year": tp.get("year", "2026"),
@@ -957,7 +957,7 @@ def _content_to_fill_data(content: dict) -> dict:
         },
         "abstract": {
             "title": abstract.get("title", tp.get("title", "HOA Governance")),
-            "author": f"By {tp.get('author', 'Patrick Flanigan')}",
+            "author": f"By {tp.get('author', 'The Author')}",
             "body": abstract.get("body", ""),
         },
         "ack": ack,
@@ -1330,6 +1330,24 @@ def _model_tags(model_id: str, provider: str) -> str:
         tags.append("best quality")
     elif "claude-haiku-4-5" in mid:
         tags.append("recommended upgrade")
+
+    # Task-specific recommendations based on testing
+    if "nova-pro" in mid:
+        tags.append("great for Q&A · fast JSON")
+    elif "nemotron-super" in mid:
+        tags.append("excellent all-rounder · fast")
+    elif "nemotron-nano-3-30b" in mid or "nemotron-nano-12b" in mid:
+        tags.append("good for Q&A · fast")
+    elif "mistral-large-3" in mid or "magistral" in mid:
+        tags.append("fastest · strong JSON · good for templates")
+    elif "deepseek" in mid and "r1" not in mid:
+        tags.append("strong reasoning · slower generation")
+    elif "claude-3-sonnet-2024" in mid:
+        tags.append("best for document generation")
+    elif "gpt-oss-120b" in mid:
+        tags.append("needs inference profile")
+    elif "gpt-oss-20b" in mid:
+        tags.append("needs inference profile")
 
     return " · ".join(tags)
 

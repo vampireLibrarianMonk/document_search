@@ -1,0 +1,18 @@
+{
+  "model": "deepseek.v3.2",
+  "content": {
+    "score": 22,
+    "max": 25
+  },
+  "format": {
+    "score": 25,
+    "max": 25
+  },
+  "location": {
+    "score": 25,
+    "max": 25
+  },
+  "total": 72,
+  "max": 75,
+  "pct": 96.0
+}

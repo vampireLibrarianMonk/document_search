@@ -1,0 +1,27 @@
+[
+  {
+    "test": "strip_em",
+    "pass": true,
+    "detail": "text"
+  },
+  {
+    "test": "strip_nested",
+    "pass": true,
+    "detail": "text"
+  },
+  {
+    "test": "strip_none",
+    "pass": true,
+    "detail": "no change"
+  },
+  {
+    "test": "strip_dict",
+    "pass": true,
+    "detail": "{'k': 'v'}"
+  },
+  {
+    "test": "strip_list",
+    "pass": true,
+    "detail": "['a', 'b']"
+  }
+]

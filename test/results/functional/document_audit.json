@@ -1,0 +1,194 @@
+{
+  "template_1_deepseek_v3.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6015,
+    "issues": []
+  },
+  "template_1_deepseek_v3_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5058,
+    "issues": []
+  },
+  "template_1_deepseek_v3_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6096,
+    "issues": []
+  },
+  "template_1_gpt_oss_120b_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4321,
+    "issues": []
+  },
+  "template_1_gpt_oss_120b_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5197,
+    "issues": []
+  },
+  "template_1_haiku3.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5849,
+    "issues": []
+  },
+  "template_1_haiku3_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4424,
+    "issues": []
+  },
+  "template_1_haiku3_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6457,
+    "issues": []
+  },
+  "template_1_mistral_large.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6319,
+    "issues": []
+  },
+  "template_1_mistral_large_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5131,
+    "issues": []
+  },
+  "template_1_mistral_large_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6250,
+    "issues": []
+  },
+  "template_1_nemotron_super.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 7329,
+    "issues": []
+  },
+  "template_1_nemotron_super_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 6181,
+    "issues": []
+  },
+  "template_1_nemotron_super_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 7006,
+    "issues": []
+  },
+  "template_1_nova_pro.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5124,
+    "issues": []
+  },
+  "template_1_nova_pro_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4078,
+    "issues": []
+  },
+  "template_1_nova_pro_ai_thesis.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4026,
+    "issues": []
+  },
+  "template_1_nova_pro_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4962,
+    "issues": []
+  },
+  "template_1_sonnet3.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5346,
+    "issues": []
+  },
+  "template_1_sonnet3_ai.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4348,
+    "issues": []
+  },
+  "template_1_sonnet3_hoa.docx": {
+    "pages": 10,
+    "page_breaks": 9,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 5101,
+    "issues": []
+  },
+  "template_2_nova_pro.docx": {
+    "pages": 3,
+    "page_breaks": 2,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 4063,
+    "issues": [
+      "THIN GLOSSARY: 0 chars",
+      "THIN CHAPTER: 0 chars",
+      "THIN ACKNOWLEDGMENTS: 0 chars"
+    ]
+  },
+  "template_3_nova_pro.docx": {
+    "pages": 4,
+    "page_breaks": 3,
+    "max_consecutive_pbs": 1,
+    "empty_pages": [],
+    "total_chars": 2800,
+    "issues": [
+      "THIN GLOSSARY: 0 chars",
+      "THIN CHAPTER: 0 chars",
+      "THIN ACKNOWLEDGMENTS: 0 chars"
+    ]
+  }
+}

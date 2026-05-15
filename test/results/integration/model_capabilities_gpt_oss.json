@@ -1,0 +1,36 @@
+{
+  "run_date": "2026-05-15T07:51:32.450826",
+  "note": "GPT-OSS models return reasoningContent + text blocks. Must use content[1]['text'] not content[0]['text'].",
+  "results": [
+    {
+      "model_id": "openai.gpt-oss-120b-1:0",
+      "family": "OpenAI",
+      "name": "GPT-OSS 120B",
+      "json_valid": true,
+      "json_time": 0.6,
+      "content_len": 0,
+      "content_quality": false,
+      "content_time": 1.62,
+      "qa_correct": true,
+      "qa_time": 0.39,
+      "overall_pass": false,
+      "total_time": 2.62,
+      "note": "reasoning model \u2014 requires parsing content[1] not content[0]"
+    },
+    {
+      "model_id": "openai.gpt-oss-20b-1:0",
+      "family": "OpenAI",
+      "name": "GPT-OSS 20B",
+      "json_valid": true,
+      "json_time": 0.61,
+      "content_len": 0,
+      "content_quality": false,
+      "content_time": 1.84,
+      "qa_correct": true,
+      "qa_time": 0.99,
+      "overall_pass": false,
+      "total_time": 3.45,
+      "note": "reasoning model \u2014 requires parsing content[1] not content[0]"
+    }
+  ]
+}
