@@ -1,123 +1,111 @@
-"""Tests for the document classifier.
+"""Tests for the LLM-based document classifier.
 
-Makes sure documents get sorted into the right categories based on
-their filename and content. No API calls needed, runs instantly.
+Mocks Bedrock calls to verify the classification logic without API costs.
 """
+
+import os
+from unittest.mock import patch, MagicMock
 
 from app.classifier import classify_document
 
+# Ensure a model ID is set for tests that mock Bedrock
+_TEST_ENV = {"BEDROCK_MODEL_ID": "test-model"}
 
-def test_closing_disclosure():
-    cat, dtype, _ = classify_document(
-        "Closing Disclosure.pdf",
-        "closing disclosure projected payments loan terms",
+
+def _mock_bedrock_response(category: str, doc_type: str, tags: list[str], title: str = ""):
+    """Create a mock Bedrock converse response."""
+    import json
+    return {
+        "output": {"message": {"content": [{"text": json.dumps({
+            "category": category,
+            "document_type": doc_type,
+            "tags": tags,
+            "title": title,
+        })}]}},
+        "usage": {"inputTokens": 100, "outputTokens": 50},
+    }
+
+
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=[])
+@patch("app.classifier._get_bedrock")
+def test_classifies_document(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.return_value = _mock_bedrock_response(
+        "Vehicle Maintenance", "invoice", ["oil-change", "toyota"], "Oil Change Invoice - Toyota Dealership"
     )
-    assert cat == "Closing Documents"
-    assert dtype == "closing_disclosure"
+    cat, dtype, tags, title = classify_document("oil_change_receipt.pdf", "Oil change service performed on 2024 Toyota")
+    assert cat == "Vehicle Maintenance"
+    assert dtype == "invoice"
+    assert "oil-change" in tags
+    assert title == "Oil Change Invoice - Toyota Dealership"
 
 
-def test_deed_of_trust():
-    cat, dtype, _ = classify_document(
-        "3047 VA Deed of Trust 2021.pdf",
-        "deed of trust grantor grantee trustee",
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=["Vehicle Maintenance", "Insurance"])
+@patch("app.classifier._get_bedrock")
+def test_existing_categories_passed_to_prompt(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.return_value = _mock_bedrock_response(
+        "Insurance", "insurance_policy", ["auto"], "Auto Insurance Policy - State Farm"
     )
-    assert cat == "Closing Documents"
-    assert dtype == "deed"
+    classify_document("policy.pdf", "Auto insurance policy coverage")
+    call_args = mock_bedrock.return_value.converse.call_args
+    prompt_text = call_args[1]["messages"][0]["content"][0]["text"]
+    assert "Vehicle Maintenance" in prompt_text
+    assert "Insurance" in prompt_text
 
 
-def test_bylaws():
-    cat, dtype, _ = classify_document(
-        "Appendix 02Bylaws.pdf",
-        "bylaws board of directors annual meeting of members",
-    )
-    assert cat == "HOA Governance"
-    assert dtype == "bylaws"
-
-
-def test_architectural_guidelines():
-    cat, dtype, _ = classify_document(
-        "Appendix 02Architectural Guidelines.pdf",
-        "architectural review board exterior modification application",
-    )
-    assert cat == "HOA Governance"
-    assert dtype == "architectural_guidelines"
-
-
-def test_appraisal():
-    cat, dtype, _ = classify_document(
-        "APPRAISAL-1.pdf",
-        "uniform residential appraisal report market value comparable sale",
-    )
-    assert cat == "Appraisal"
-    assert dtype == "appraisal"
-
-
-def test_insurance():
-    cat, dtype, _ = classify_document(
-        "Insurance Dec Page.pdf",
-        "insurance dec page policy number coverage info replacement cost",
-    )
-    assert cat == "Insurance"
-    assert dtype == "insurance_policy"
-
-
-def test_tax_document():
-    cat, dtype, _ = classify_document(
-        "W-9 Taxpayer ID.pdf",
-        "w-9 taxpayer identification number",
-    )
-    assert cat == "Tax & Legal"
-    assert dtype == "tax"
-
-
-def test_wire_transfer():
-    cat, dtype, _ = classify_document(
-        "Wire Fraud Education.pdf",
-        "wire fraud wire transfer wire instruction",
-    )
-    assert cat == "Payments & Transfers"
-    assert dtype == "wire"
-
-
-def test_resale_certificate():
-    cat, dtype, _ = classify_document(
-        "Resale Certificate.pdf",
-        "resale certificate managing agent disclosure",
-    )
-    assert cat == "HOA Financial"
-    assert dtype == "resale_certificate"
-
-
-def test_unknown_document_falls_back_to_general():
-    cat, dtype, _ = classify_document(
-        "random_notes.pdf",
-        "nothing special here just some random text about lunch",
-    )
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=[])
+@patch("app.classifier._get_bedrock")
+def test_falls_back_on_error(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.side_effect = Exception("API error")
+    cat, dtype, tags, title = classify_document("test.pdf", "some text")
     assert cat == "Uncategorized"
     assert dtype == "general"
+    assert title == ""
 
 
-def test_filename_hint_works_when_text_has_no_match():
-    """If the text doesn't match any rules, the filename should still catch it."""
-    cat, dtype, _ = classify_document(
-        "APPRAISAL-2.pdf",
-        "some generic text with no keywords",
+@patch.dict("os.environ", {"BEDROCK_MODEL_ID": ""}, clear=False)
+@patch.dict("os.environ", {"BEDROCK_CLASSIFY_MODEL_ID": ""}, clear=False)
+def test_falls_back_when_no_model_configured():
+    cat, dtype, tags, title = classify_document("test.pdf", "some text")
+    assert cat == "Uncategorized"
+    assert dtype == "general"
+    assert title == ""
+
+
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=[])
+@patch("app.classifier._get_bedrock")
+def test_handles_markdown_wrapped_json(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.return_value = {
+        "output": {"message": {"content": [{"text": '```json\n{"category": "Medical", "document_type": "lab_results", "tags": ["blood-work"], "title": "Complete Blood Count Results"}\n```'}]}},
+        "usage": {"inputTokens": 100, "outputTokens": 50},
+    }
+    cat, dtype, tags, title = classify_document("labs.pdf", "Complete blood count results")
+    assert cat == "Medical"
+    assert dtype == "lab_results"
+    assert title == "Complete Blood Count Results"
+
+
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=[])
+@patch("app.classifier._get_bedrock")
+def test_normalizes_document_type(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.return_value = _mock_bedrock_response(
+        "Tax & Legal", "Tax Return 2024", ["taxes"], "2024 Federal Tax Return"
     )
-    assert cat == "Appraisal"
-    assert dtype == "appraisal"
+    cat, dtype, tags, title = classify_document("1040.pdf", "Form 1040 tax return")
+    assert cat == "Tax & Legal"
+    assert dtype == "tax_return_2024"  # normalized to snake_case
 
 
-def test_tags_include_document_type():
-    _, dtype, tags = classify_document(
-        "Bylaws.pdf",
-        "bylaws board of directors",
+@patch.dict("os.environ", _TEST_ENV)
+@patch("app.classifier._get_existing_categories", return_value=[])
+@patch("app.classifier._get_bedrock")
+def test_limits_tags_to_five(mock_bedrock, mock_cats):
+    mock_bedrock.return_value.converse.return_value = _mock_bedrock_response(
+        "General", "report", ["a", "b", "c", "d", "e", "f", "g"], "Some Report"
     )
-    assert dtype in tags
-
-
-def test_tags_detect_va_loan():
-    _, _, tags = classify_document(
-        "VA Fixed Rate Note.pdf",
-        "va fixed rate note monthly payment",
-    )
-    assert "va-loan" in tags
+    _, _, tags, _ = classify_document("report.pdf", "some report")
+    assert len(tags) <= 5

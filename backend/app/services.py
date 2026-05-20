@@ -115,13 +115,17 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
     chunks = await loop.run_in_executor(_pool, chunk_text, text)
 
     # Figure out what kind of document this is
-    category, document_type, tags = classify_document(original_name, text)
+    category, document_type, tags, suggested_title = classify_document(original_name, text)
+
+    # Use LLM-suggested title if available, keep original filename separate
+    display_title = suggested_title if suggested_title else original_name
 
     # Save to Postgres
     store.add_document(
         DocumentResponse(
             document_id=document_id,
-            title=original_name,
+            title=display_title,
+            original_filename=original_name,
             source_type="uploaded_file",
             source_url=destination,
             document_type=document_type,

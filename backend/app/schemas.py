@@ -75,6 +75,7 @@ class BulkUploadResponse(BaseModel):
 class DocumentResponse(BaseModel):
     document_id: str
     title: str
+    original_filename: str = ""
     source_type: str
     source_url: str
     document_type: str

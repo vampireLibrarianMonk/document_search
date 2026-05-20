@@ -1,5 +1,5 @@
 /**
- * House Document Search - Frontend
+ * Document Search - Frontend
  *
  * Single-page Vue app for uploading house documents (PDFs, DOCX, etc.)
  * and searching or asking AI questions about their contents.
@@ -799,7 +799,7 @@ createApp({
 
           // Header
           h("div", { class: "header" }, [
-            h("h1", "📄 House Document Search"),
+            h("h1", "📄 Document Search"),
             h("p", "Upload, search, and ask questions about your documents"),
           ]),
 

@@ -65,13 +65,14 @@ class PgStore:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO documents (document_id, title, source_type, source_url, document_type, category, tags, status, content_hash)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """INSERT INTO documents (document_id, title, original_filename, source_type, source_url, document_type, category, tags, status, content_hash)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (document_id) DO UPDATE SET
-                         title=EXCLUDED.title, category=EXCLUDED.category, tags=EXCLUDED.tags, status=EXCLUDED.status""",
+                         title=EXCLUDED.title, original_filename=EXCLUDED.original_filename, category=EXCLUDED.category, tags=EXCLUDED.tags, status=EXCLUDED.status""",
                     (
                         doc.document_id,
                         doc.title,
+                        doc.original_filename,
                         doc.source_type,
                         doc.source_url,
                         doc.document_type,

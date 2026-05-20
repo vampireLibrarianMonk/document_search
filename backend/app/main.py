@@ -1,4 +1,4 @@
-"""FastAPI routes for the House Document Search API."""
+"""FastAPI routes for the Document Search API."""
 
 import logging
 import os
@@ -39,7 +39,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="House Document Search API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Document Search API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +63,7 @@ _logger = logging.getLogger(__name__)
 
 @app.get("/")
 def root():
-    return {"message": "House Document Search API", "docs": "/docs"}
+    return {"message": "Document Search API", "docs": "/docs"}
 
 
 @app.get("/health")

@@ -18,6 +18,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
     document_id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
+    original_filename TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT 'uploaded_file',
     source_url TEXT NOT NULL DEFAULT '',
     document_type TEXT NOT NULL DEFAULT 'general',
@@ -35,6 +36,11 @@ END $$;
 
 DO $$ BEGIN
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS original_filename TEXT NOT NULL DEFAULT '';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 

@@ -1,0 +1,51 @@
+@startuml template_fill
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Template Fill Pipeline
+
+actor User
+participant "Frontend" as FE
+participant "API" as API
+participant "Content\nGenerator" as CG
+participant "Fill\nEngine" as FE2
+participant "Bedrock" as BR
+database "Search\nIndex" as SI
+database "Template\nStore" as TS
+
+User -> FE: Select template + write prompt
+FE -> API: POST /templates/{id}/fill
+API -> TS: Get template file bytes
+API -> SI: Search for relevant chunks
+
+== Generate Phase (section by section) ==
+
+API -> CG: generate_content(prompt, context, doc_titles)
+CG -> BR: Title page prompt (~500 tokens)
+BR --> CG: JSON {title, author, institution...}
+CG -> BR: Abstract prompt (~800 tokens)
+BR --> CG: JSON {body}
+CG -> BR: Glossary prompt (~600 tokens)
+BR --> CG: JSON {terms[]}
+CG -> BR: Chapter prompt (~1500 tokens)
+BR --> CG: JSON {title, sections[]}
+CG --> API: Complete content package
+
+== Apply Phase (single pass) ==
+
+API -> FE2: apply_full(docx_bytes, content)
+note right of FE2
+  1. Replace SDT placeholders
+  2. Remove MACROBUTTON fields
+  3. Fill bibliography table
+  4. Fill index table
+  5. Replace static text
+  6. Scale fonts for overflow
+  7. Preserve page breaks
+end note
+FE2 --> API: Filled DOCX bytes
+
+API --> FE: DOCX file download
+FE --> User: Download filled document
+
+@enduml

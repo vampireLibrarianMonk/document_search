@@ -47,15 +47,22 @@ frontend --> api : REST API
 api --> pg : documents\nchunks\njobs\ntoken_usage
 api --> os : index & search\nchunks (BM25)
 api --> disk : save uploads
-api --> bedrock : Ask AI (Q&A)\nVision OCR
+api --> bedrock : Ask AI (Q&A)\nVision OCR\nTemplate Fill\nDocument Generation\nFormat Detection
 api --> pricing : fetch model\npricing
 api --> bookstack : sync & push\ndocuments
 api --> confluence : sync\ndocuments
+api --> disk : save uploads\ntemplate bytes\npreview cache
 bookstack --> bsdb
 
 note right of bedrock
   Uses Converse API
   (model-agnostic)
+  5 model roles:
+  - Ask AI (Nova Pro)
+  - Generate (Sonnet 3)
+  - Template (Nova Pro)
+  - Vision (Haiku 3)
+  - Detect (Mistral Large)
   Tracks token usage
   & estimated cost
 end note

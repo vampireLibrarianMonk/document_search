@@ -1,338 +1,123 @@
-"""Auto-classify documents by reading their content.
+"""Auto-classify documents using LLM.
 
-Uses a tiered approach:
-  1. Structural patterns (phrases that only appear in specific doc types)
-  2. Filename hints
-  3. Keyword density scoring across the full text
-
-No API calls, no cost. Runs locally and instantly.
+Sends document text to Bedrock and asks it to pick or create a category.
+Learns from existing categories in the database so the taxonomy grows organically.
+Falls back to "Uncategorized" if Bedrock is unavailable.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 
-# Each rule: (category, document_type, patterns_in_text, filename_hints)
-# Patterns are checked against the first 3000 chars of extracted text.
-# More specific patterns go first so they match before generic ones.
+logger = logging.getLogger(__name__)
 
-_RULES: list[tuple[str, str, list[str], list[str]]] = [
-    # -- Closing Documents --
-    (
-        "Closing Documents",
-        "closing_disclosure",
-        ["closing disclosure", "loan estimate", "projected payments"],
-        ["closing disclosure"],
-    ),
-    (
-        "Closing Documents",
-        "deed",
-        ["deed of trust", "deed of conveyance", "grantor", "grantee", "trustee"],
-        ["deed"],
-    ),
-    (
-        "Closing Documents",
-        "note",
-        ["promissory note", "fixed rate note", "interest rate", "monthly payment", "note holder"],
-        ["note 2021", "fixed rate note"],
-    ),
-    (
-        "Closing Documents",
-        "loan_application",
-        ["uniform residential loan application", "1003"],
-        ["1003", "loan application"],
-    ),
-    (
-        "Closing Documents",
-        "loan_analysis",
-        ["va loan analysis", "loan summary sheet", "loan disbursement"],
-        ["loan analysis", "loan summary", "disbursement"],
-    ),
-    (
-        "Closing Documents",
-        "escrow",
-        ["escrow account", "escrow disclosure", "escrow analysis"],
-        ["escrow"],
-    ),
-    (
-        "Closing Documents",
-        "amortization",
-        ["amortization schedule", "payment schedule", "principal", "interest", "balance"],
-        ["amortization"],
-    ),
-    (
-        "Closing Documents",
-        "title",
-        ["title insurance", "title commitment", "title company"],
-        ["title"],
-    ),
-    (
-        "Closing Documents",
-        "closing_instructions",
-        ["closing instructions", "settlement statement", "closing agent"],
-        ["closing instruction"],
-    ),
-    (
-        "Closing Documents",
-        "closing_misc",
-        [
-            "compliance agreement",
-            "servicing transfer",
-            "first payment letter",
-            "patriot act",
-            "occupancy statement",
-            "e-close",
-            "hybrid eclose",
-            "signature-name affidavit",
-            "nearest living relative",
-            "lender loan quality",
-            "taxpayer consent",
-        ],
-        [
-            "compliance",
-            "servicing transfer",
-            "first payment",
-            "patriot act",
-            "occupancy",
-            "eclose",
-            "affidavit",
-            "nearest living",
-            "loan quality",
-            "taxpayer consent",
-            "fact act",
-        ],
-    ),
-    # -- HOA / Governance --
-    (
-        "HOA Governance",
-        "bylaws",
-        ["bylaws", "by-laws", "board of directors shall", "annual meeting of members"],
-        ["bylaws", "by-laws"],
-    ),
-    (
-        "HOA Governance",
-        "ccrs",
-        ["declaration of covenants", "covenants, conditions", "cc&r", "declaration of protective"],
-        ["declaration", "cc&r", "covenants"],
-    ),
-    (
-        "HOA Governance",
-        "rules_and_regulations",
-        ["rules and regulations", "community rules", "violation notice"],
-        ["rules and regulations", "rules_and_regulations"],
-    ),
-    (
-        "HOA Governance",
-        "architectural_guidelines",
-        [
-            "architectural review",
-            "exterior modification",
-            "architectural guidelines",
-            "architectural review board",
-            "arb",
-        ],
-        ["architectural"],
-    ),
-    (
-        "HOA Governance",
-        "articles_of_incorporation",
-        ["articles of incorporation", "certificate of incorporation"],
-        ["articles of incorporation"],
-    ),
-    (
-        "HOA Governance",
-        "resolutions",
-        ["resolution", "board resolution", "adopted by the board"],
-        ["resolution"],
-    ),
-    (
-        "HOA Governance",
-        "meeting_minutes",
-        ["meeting minutes", "board meeting", "association meeting", "minutes of"],
-        ["meeting minutes", "board meeting", "association meeting"],
-    ),
-    (
-        "HOA Governance",
-        "hoa_misc",
-        [
-            "homeowners association",
-            "homeowner association",
-            "hoa",
-            "community association",
-            "annual registration",
-        ],
-        ["hoa", "annual registration", "new owner forms"],
-    ),
-    # -- Financial --
-    (
-        "HOA Financial",
-        "budget",
-        ["annual budget", "operating budget", "budget summary"],
-        ["budget"],
-    ),
-    (
-        "HOA Financial",
-        "financial_statement",
-        ["balance sheet", "income statement", "expense statement", "financial statement"],
-        ["balance sheet", "income", "expense"],
-    ),
-    (
-        "HOA Financial",
-        "reserve_study",
-        ["reserve study", "reserve fund", "replacement reserve"],
-        ["reserve study"],
-    ),
-    (
-        "HOA Financial",
-        "audit",
-        ["audited financial", "independent auditor", "audit report"],
-        ["audit"],
-    ),
-    (
-        "HOA Financial",
-        "assessment",
-        ["special assessment", "assessment notice", "assessment schedule"],
-        ["assessment"],
-    ),
-    (
-        "HOA Financial",
-        "resale_certificate",
-        ["resale certificate", "resale disclosure"],
-        ["resale certificate"],
-    ),
-    # -- Insurance --
-    (
-        "Insurance",
-        "insurance_policy",
-        [
-            "insurance dec page",
-            "insurance policy",
-            "coverage info",
-            "policy number",
-            "replacement cost",
-            "hazard insurance",
-            "homeowner and fire",
-        ],
-        ["insurance", "coverage", "hazard", "replacement cost"],
-    ),
-    # -- Inspection --
-    (
-        "Inspection",
-        "inspection_report",
-        [
-            "inspection report",
-            "property inspection",
-            "wdi",
-            "wood destroying",
-            "termite",
-            "pest inspection",
-            "compliance inspection",
-        ],
-        ["inspection", "wdi"],
-    ),
-    # -- Appraisal --
-    (
-        "Appraisal",
-        "appraisal",
-        [
-            "appraisal report",
-            "uniform residential appraisal",
-            "appraised value",
-            "market value",
-            "comparable sale",
-        ],
-        ["appraisal"],
-    ),
-    # -- Tax --
-    (
-        "Tax & Legal",
-        "tax",
-        [
-            "tax return",
-            "tax information",
-            "w-9",
-            "8821",
-            "taxpayer identification",
-            "tax authorization",
-            "credit score disclosure",
-        ],
-        ["tax", "w-9", "8821", "credit score"],
-    ),
-    (
-        "Tax & Legal",
-        "va_document",
-        ["va amendment", "va rider", "va loan", "department of veterans"],
-        ["va amendment", "va rider", "va loan"],
-    ),
-    # -- Wire / Payment --
-    (
-        "Payments & Transfers",
-        "wire",
-        ["wire transfer", "wire fraud", "wire instruction", "wire detail"],
-        ["wire"],
-    ),
-    (
-        "Payments & Transfers",
-        "payment",
-        ["payment confirmation", "payment receipt", "direct pay"],
-        ["receipt", "payment"],
-    ),
-    # -- Mortgage --
-    (
-        "Mortgage",
-        "mortgage_statement",
-        ["mortgagee statement", "mortgage statement", "loan servicer"],
-        ["mortgagee", "mortgage statement"],
-    ),
-    (
-        "Mortgage",
-        "pud_rider",
-        ["pud rider", "planned unit development"],
-        ["pud rider"],
-    ),
-]
+_bedrock = None
 
 
-def classify_document(filename: str, text: str) -> tuple[str, str, list[str]]:
-    """Classify a document and return (category, document_type, tags).
+def _get_bedrock():
+    global _bedrock
+    if _bedrock is None:
+        import boto3
+        _bedrock = boto3.client(
+            "bedrock-runtime",
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+        )
+    return _bedrock
 
-    Reads the filename and first 3000 chars of text to determine
-    what kind of document this is and which category it belongs to.
+
+def _get_existing_categories() -> list[str]:
+    """Pull distinct categories from the database."""
+    try:
+        from .db import get_conn
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT category FROM documents WHERE category IS NOT NULL AND category != 'Uncategorized' ORDER BY category")
+                return [row[0] for row in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
+def classify_document(filename: str, text: str) -> tuple[str, str, list[str], str]:
+    """Classify a document and return (category, document_type, tags, suggested_title).
+
+    Uses Bedrock to determine category and type based on content.
+    Falls back to Uncategorized if the LLM call fails.
     """
-    probe_text = text[:3000].lower()
-    probe_name = filename.lower()
+    model_id = os.getenv("BEDROCK_CLASSIFY_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "")
+    if not model_id:
+        return "Uncategorized", "general", ["general"], ""
 
-    # Pass 1: check text patterns (most reliable)
-    for category, doc_type, text_patterns, _ in _RULES:
-        for pattern in text_patterns:
-            if pattern in probe_text:
-                tags = _extract_tags(probe_text, doc_type)
-                return category, doc_type, tags
+    existing = _get_existing_categories()
+    probe_text = text[:2000]
 
-    # Pass 2: check filename hints
-    for category, doc_type, _, name_hints in _RULES:
-        for hint in name_hints:
-            if hint in probe_name:
-                tags = _extract_tags(probe_text, doc_type)
-                return category, doc_type, tags
+    categories_hint = ""
+    if existing:
+        categories_hint = f"\n\nExisting categories in this collection: {json.dumps(existing)}\nUse one of these if the document clearly fits. Create a new category if none are a good match. Be precise — do not lump unrelated services together (e.g. HVAC repair is not Vehicle Maintenance)."
 
-    # Pass 3: nothing matched
-    tags = _extract_tags(probe_text, "general")
-    return "Uncategorized", "general", tags
+    prompt = (
+        f"Classify this document. Return ONLY a JSON object with these fields:\n"
+        f"- \"category\": a short human-readable group name that describes the domain (e.g. \"Home Maintenance\", \"Medical Records\", \"Tax & Legal\", \"Vehicle Maintenance\"). Choose based on the actual subject matter of the document, not just the document format.\n"
+        f"- \"document_type\": a snake_case type (e.g. \"invoice\", \"estimate\", \"proposal\", \"inspection_report\", \"insurance_policy\")\n"
+        f"- \"tags\": a list of 1-3 relevant keyword tags\n"
+        f"- \"title\": a clear, descriptive title for this document (e.g. \"HVAC Ductwork Repair Estimate - Reddick & Sons\" or \"Q1 2024 HOA Budget Report\"). Make it specific enough to distinguish from similar documents.\n"
+        f"\nImportant distinctions:\n"
+        f"- \"Appraisal\" means a professional property valuation (market value, comparable sales). Do NOT use it for contractor estimates, proposals, or quotes.\n"
+        f"- Contractor estimates, proposals, and quotes for future work belong in \"Home Maintenance\" or a similar service category, with document_type like \"estimate\" or \"proposal\".\n"
+        f"{categories_hint}\n\n"
+        f"Filename: {filename}\n\n"
+        f"Document text (first 2000 chars):\n{probe_text}"
+    )
 
+    try:
+        resp = _get_bedrock().converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": 256},
+        )
+        raw = resp["output"]["message"]["content"][0]["text"]
 
-def _extract_tags(text: str, doc_type: str) -> list[str]:
-    """Pull useful tags from the document text."""
-    tags = [doc_type]
+        # Extract JSON from response (handle markdown code blocks)
+        json_match = re.search(r"\{[^}]+\}", raw, re.DOTALL)
+        if not json_match:
+            return "Uncategorized", "general", ["general"]
 
-    # Look for common identifiers
-    if "centerpointe" in text:
-        tags.append("centerpointe")
-    if "12133 tribune" in text:
-        tags.append("12133-tribune-st")
-    if re.search(r"va\s+(loan|fixed|rider|amendment)", text):
-        tags.append("va-loan")
-    if "zillow" in text or "zhl" in text:
-        tags.append("zillow-home-loans")
+        result = json.loads(json_match.group())
+        category = result.get("category", "Uncategorized")
+        doc_type = result.get("document_type", "general")
+        tags = result.get("tags", [doc_type])
+        title = result.get("title", "")
 
-    return list(dict.fromkeys(tags))  # dedupe preserving order
+        # Normalize
+        if not category or category.lower() == "uncategorized":
+            category = "Uncategorized"
+        doc_type = re.sub(r"[^a-z0-9_]", "_", doc_type.lower().strip())
+        tags = [str(t).lower().strip() for t in tags if t][:5]
+
+        # Track usage
+        if os.getenv("TRACK_USAGE", "true").lower() == "true":
+            try:
+                from .pg_store import PgStore
+                from .pricing import estimate_cost
+                usage = resp.get("usage", {})
+                store = PgStore()
+                store.log_usage(
+                    model_id=model_id,
+                    operation="classify",
+                    input_tokens=usage.get("inputTokens", 0),
+                    output_tokens=usage.get("outputTokens", 0),
+                    cost=estimate_cost(model_id, usage.get("inputTokens", 0), usage.get("outputTokens", 0), os.getenv("AWS_REGION", "us-east-1")),
+                )
+            except Exception:
+                pass
+
+        return category, doc_type, tags, title
+
+    except Exception as e:
+        logger.warning("LLM classification failed, falling back to Uncategorized: %s", e)
+        return "Uncategorized", "general", ["general"], ""

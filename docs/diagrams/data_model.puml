@@ -46,6 +46,26 @@ entity "token_usage" as usage {
   document_id : text
 }
 
+entity "templates" as tmpl {
+  * template_id : text <<PK>>
+  --
+  name : text
+  source_format : text
+  structure : jsonb
+  file_bytes : bytea
+  created_at : timestamp
+}
+
 doc ||--o{ chunk : "has many"
 doc .. usage : "optional ref"
+
+note right of tmpl
+  structure contains:
+  - sections[]
+  - fonts{}
+  - page_layout{}
+  - fill_map[]
+  file_bytes stores the
+  original DOCX for cloning
+end note
 @enduml

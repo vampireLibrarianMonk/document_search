@@ -124,11 +124,66 @@ Click the "Create" tab to generate new documents from your indexed content.
 
 ### Model Selection
 
-Three separate models can be configured in Settings:
+Five separate models can be configured in Settings:
 
-- **Ask AI Model** - For quick Q&A answers (use a cheap/fast model)
-- **Create Document Model** - For document generation (use a balanced/quality model for better output)
-- **Vision OCR Model** - For reading scanned pages
+- **Ask AI Model** — For quick Q&A answers (default: Amazon Nova Pro — fast, accurate)
+- **Create Document Model** — For document/template generation (default: Claude Sonnet 3 — best instruction following)
+- **Template Extraction Model** — For analyzing template structure on import (default: Amazon Nova Pro — fast JSON)
+- **Vision OCR Model** — For reading scanned pages and images (default: Claude Haiku 3 — cheapest with vision)
+- **Format Detection Model** — For detecting output format from prompts (default: Mistral Large 3 — fastest)
+
+Models from 11+ families are supported: Anthropic, Amazon, NVIDIA, Mistral, DeepSeek, Meta, Google, AI21, Qwen, Z.AI, and OpenAI (GPT-OSS). Each model in Settings shows descriptive tags like `[$ cheapest · fast]` or `[$$ balanced · best for document generation]`.
+
+## Document Preview
+
+Click the 📄 icon next to any document to open an in-browser preview:
+
+- **PDF files** — rendered directly in an iframe
+- **Images (PNG, JPEG)** — displayed inline
+- **DOCX files** — rendered client-side via docx-preview (no server conversion needed)
+- **PPTX files** — converted to PDF server-side via LibreOffice, then displayed
+
+## Templates
+
+Click the "📋 Templates" tab to manage document templates.
+
+### Importing Templates
+
+1. Click "+ Import Template" and select a DOCX or PDF file
+2. The system extracts the template's structure: fonts, page layout, sections, fill-in fields
+3. The template is stored with its original file bytes for later filling
+
+### Filling Templates
+
+1. Go to the "✏ Create" tab and select a template from the dropdown
+2. Write a prompt describing what content you want (e.g., "Write a thesis about HOA governance")
+3. Click "📄 Fill Template"
+4. The system searches your indexed documents for relevant content, generates text for each section, and produces a filled DOCX that preserves the original formatting, fonts, images, and page layout
+
+### How Template Fill Works
+
+![Template Fill Pipeline](docs/diagrams/template_fill.png)
+
+The fill engine uses a three-phase approach:
+
+1. **Generate** — Section-by-section content generation via Bedrock (title, abstract, glossary, chapter, bibliography, index). Each section gets its own focused context from the search index.
+2. **Apply** — Clones the original DOCX and replaces placeholder text (SDTs, MACROBUTTON fields, table cells) while preserving all XML formatting, run properties, and page structure.
+3. **Post-process** — Removes artifacts, scales fonts for overflow, preserves page breaks.
+
+### Template Diagnostic
+
+The "🔬 Diagnostic" tab shows a three-panel view for debugging template fills:
+- **Original Template** — extracted structure (sections, fonts, layout)
+- **Fill Schema** — the analyzed fill map (every fillable slot cataloged)
+- **Filled Result** — the generated output with download button
+
+### Supported Template Types
+
+| Template Type | Example | Fill Method |
+|--------------|---------|-------------|
+| Academic thesis | Title page, TOC, chapters, bibliography, index | Full SDT replacement |
+| Business checklist | Checkbox tables with task descriptions | Table content fill |
+| Statement of work | Contract tables with scope/deliverables | Table content fill |
 
 ## Running the App
 
@@ -195,8 +250,16 @@ Key endpoints:
 - `GET /documents/{id}` - Get a single document
 - `GET /documents/{id}/chunks` - Get a document's text chunks
 - `GET /documents/{id}/file` - Download the original uploaded file
+- `GET /documents/{id}/preview` - Preview document (PDF/image direct, DOCX/PPTX converted)
 - `DELETE /documents/{id}` - Delete a document
 - `DELETE /documents` - Delete all documents
+- `POST /templates/extract` - Import a template (extract structure + store file)
+- `GET /templates` - List all templates
+- `GET /templates/{id}` - Get template structure
+- `POST /templates/{id}/analyze` - Get fill schema (all fillable slots)
+- `POST /templates/{id}/fill` - Fill template with AI-generated content
+- `GET /templates/{id}/export` - Export template as JSON or XML
+- `DELETE /templates/{id}` - Delete a template
 - `POST /sources/bookstack/sync` - Sync from BookStack
 - `POST /sources/confluence/sync` - Sync from Confluence Cloud
 - `GET /admin/health-check` - Service health with versions
@@ -207,6 +270,9 @@ Key endpoints:
 - `GET /admin/pricing` - Current Bedrock pricing for the region
 - `PUT /admin/pricing` - Manually load pricing JSON
 - `POST /admin/cancel-upload` - Cancel in-progress uploads
+- `GET /admin/k8s-health` - Kubernetes pod status and metrics
+- `GET /admin/jobs` - Background job status
+- `POST /admin/reindex` - Trigger a reindex
 - `GET /admin/k8s-health` - Kubernetes pod status and metrics
 - `GET /admin/jobs` - Background job status
 - `POST /admin/reindex` - Trigger a reindex
