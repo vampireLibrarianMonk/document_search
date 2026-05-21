@@ -241,7 +241,7 @@ def test_run_ask_bedrock_failure(mock_os, mock_bedrock_fn):
 @patch("app.services.os_search")
 @patch("app.services.extract_text", return_value="HOA rules about fences and sheds.")
 @patch("app.services.chunk_text", return_value=["HOA rules about fences and sheds."])
-@patch("app.services.classify_document", return_value=("HOA Governance", "hoa", ["hoa"], "HOA Rules Document"))
+@patch("app.services.classify_document", return_value=("HOA Governance", "hoa", ["hoa"], "HOA Rules Document", "2026-01-15"))
 async def test_ingest_stores_document(mock_classify, mock_chunk, mock_extract, mock_os):
     """Ingestion should save the file, create a document, and store chunks."""
     store = MagicMock()

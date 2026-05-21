@@ -45,7 +45,23 @@ def get_cluster_health() -> dict:
             kubeconfig = os.getenv("KUBECONFIG", "/etc/rancher/k3s/k3s.yaml")
             config.load_kube_config(config_file=kubeconfig)
 
-        v1 = client.CoreV1Api()
+        # kubernetes client v36 has auth issues with k3s in-cluster config.
+        # Build a properly configured ApiClient manually.
+        token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        if os.path.exists(token_path):
+            with open(token_path) as f:
+                token = f.read().strip()
+            cfg = client.Configuration()
+            cfg.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST', '10.43.0.1')}:{os.getenv('KUBERNETES_SERVICE_PORT', '443')}"
+            cfg.api_key = {"BearerToken": f"Bearer {token}"}
+            cfg.ssl_ca_cert = ca_path
+            cfg.verify_ssl = True
+            api_client = client.ApiClient(cfg)
+        else:
+            api_client = client.ApiClient()
+
+        v1 = client.CoreV1Api(api_client)
         namespace = os.getenv("K8S_NAMESPACE", "docsearch")
 
         # Get pods
@@ -174,7 +190,7 @@ def get_cluster_health() -> dict:
 
         # Try to get metrics (requires metrics-server)
         try:
-            custom_api = client.CustomObjectsApi()
+            custom_api = client.CustomObjectsApi(api_client)
             metrics = custom_api.list_namespaced_custom_object(
                 group="metrics.k8s.io",
                 version="v1beta1",

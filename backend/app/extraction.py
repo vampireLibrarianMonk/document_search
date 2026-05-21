@@ -86,7 +86,7 @@ def _extract_page_image(page, page_num: int, path: str) -> str:
                             },
                         },
                         {
-                            "text": "Extract all text from this document page. Return only the text content, no commentary.",
+                            "text": "Extract ALL text from this document page, including: company names in logos or headers, watermarks, stamps, handwritten notes, footer text, and any text embedded in images or graphics. Read every piece of visible text on the page. Return only the text content, no commentary.",
                         },
                     ],
                 },
@@ -229,7 +229,7 @@ def _extract_standalone_image(path: str) -> str:
                     "role": "user",
                     "content": [
                         {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
-                        {"text": "Extract all text from this document image. Return only the text content, no commentary."},
+                        {"text": "Extract ALL text from this document image, including: company names in logos or headers, watermarks, stamps, handwritten notes, footer text, and any text embedded in images or graphics. Read every piece of visible text on the page. Return only the text content, no commentary."},
                     ],
                 },
             ],
@@ -330,7 +330,7 @@ def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
                                                 "role": "user",
                                                 "content": [
                                                     {"image": {"format": fmt, "source": {"bytes": img_bytes}}},
-                                                    {"text": "Extract all text from this image. Return only the text, no commentary."},
+                                                    {"text": "Extract ALL text from this image, including: company names in logos or headers, watermarks, stamps, handwritten notes, and any text embedded in graphics. Return only the text content, no commentary."},
                                                 ],
                                             },
                                         ],

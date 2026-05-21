@@ -115,7 +115,7 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
     chunks = await loop.run_in_executor(_pool, chunk_text, text)
 
     # Figure out what kind of document this is
-    category, document_type, tags, suggested_title = classify_document(original_name, text)
+    category, document_type, tags, suggested_title, document_date = classify_document(original_name, text)
 
     # Use LLM-suggested title if available, keep original filename separate
     display_title = suggested_title if suggested_title else original_name
@@ -132,6 +132,7 @@ async def ingest_file_to_store(store: PgStore, file: UploadFile) -> UploadRespon
             category=category,
             tags=tags,
             status="indexed" if chunks else "empty",
+            document_date=document_date or None,
         ),
         content_hash=content_hash,
     )

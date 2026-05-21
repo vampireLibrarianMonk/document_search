@@ -43,15 +43,15 @@ def _get_existing_categories() -> list[str]:
         return []
 
 
-def classify_document(filename: str, text: str) -> tuple[str, str, list[str], str]:
-    """Classify a document and return (category, document_type, tags, suggested_title).
+def classify_document(filename: str, text: str) -> tuple[str, str, list[str], str, str]:
+    """Classify a document and return (category, document_type, tags, suggested_title, document_date).
 
     Uses Bedrock to determine category and type based on content.
     Falls back to Uncategorized if the LLM call fails.
     """
     model_id = os.getenv("BEDROCK_CLASSIFY_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "")
     if not model_id:
-        return "Uncategorized", "general", ["general"], ""
+        return "Uncategorized", "general", ["general"], "", ""
 
     existing = _get_existing_categories()
     probe_text = text[:2000]
@@ -66,9 +66,14 @@ def classify_document(filename: str, text: str) -> tuple[str, str, list[str], st
         f"- \"document_type\": a snake_case type (e.g. \"invoice\", \"estimate\", \"proposal\", \"inspection_report\", \"insurance_policy\")\n"
         f"- \"tags\": a list of 1-3 relevant keyword tags\n"
         f"- \"title\": a clear, descriptive title for this document (e.g. \"HVAC Ductwork Repair Estimate - Reddick & Sons\" or \"Q1 2024 HOA Budget Report\"). Make it specific enough to distinguish from similar documents.\n"
+        f"- \"document_date\": the date of the document in YYYY-MM-DD format (e.g. \"2026-05-19\"). Extract from the document content (statement date, invoice date, letter date, etc.). Use null if no date is found.\n"
         f"\nImportant distinctions:\n"
         f"- \"Appraisal\" means a professional property valuation (market value, comparable sales). Do NOT use it for contractor estimates, proposals, or quotes.\n"
         f"- Contractor estimates, proposals, and quotes for future work belong in \"Home Maintenance\" or a similar service category, with document_type like \"estimate\" or \"proposal\".\n"
+        f"- Recurring statements (mortgage, bank, utility, credit card) belong in \"Account Statements\", NOT \"Tax & Legal\".\n"
+        f"- \"Tax & Legal\" is for one-time legal documents, tax filings, contracts, deeds, and closing paperwork.\n"
+        f"- Insurance documents (policies, declarations, coverage confirmations, certificates of insurance) belong in \"Insurance\", NOT \"Tax & Legal\".\n"
+        f"- For recurring or dated documents, always include the date (month/year) in the title.\n"
         f"{categories_hint}\n\n"
         f"Filename: {filename}\n\n"
         f"Document text (first 2000 chars):\n{probe_text}"
@@ -92,6 +97,7 @@ def classify_document(filename: str, text: str) -> tuple[str, str, list[str], st
         doc_type = result.get("document_type", "general")
         tags = result.get("tags", [doc_type])
         title = result.get("title", "")
+        document_date = result.get("document_date") or ""
 
         # Normalize
         if not category or category.lower() == "uncategorized":
@@ -116,8 +122,8 @@ def classify_document(filename: str, text: str) -> tuple[str, str, list[str], st
             except Exception:
                 pass
 
-        return category, doc_type, tags, title
+        return category, doc_type, tags, title, document_date
 
     except Exception as e:
         logger.warning("LLM classification failed, falling back to Uncategorized: %s", e)
-        return "Uncategorized", "general", ["general"], ""
+        return "Uncategorized", "general", ["general"], "", ""

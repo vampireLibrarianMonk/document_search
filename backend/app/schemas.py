@@ -82,6 +82,8 @@ class DocumentResponse(BaseModel):
     category: str = "Uncategorized"
     tags: list[str] = []
     status: str
+    document_date: str | None = None
+    uploaded_at: Any | None = None
 
 
 class ChunkRecord(BaseModel):

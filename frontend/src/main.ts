@@ -33,6 +33,9 @@ type DocInfo = {
   document_type: string;
   category: string;
   status: string;
+  document_date: string | null;
+  uploaded_at: string | null;
+  original_filename: string;
 };
 
 // -- API base URL detection --
@@ -62,7 +65,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "templates" | "diagnostic" | "health" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "templates" | "diagnostic" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -115,6 +118,7 @@ const state = reactive({
   // K8s Health
   k8sHealth: null as any,
   k8sLoading: false,
+  k8sOpen: false,
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -654,6 +658,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .btn-danger:hover{background:#b91c1c}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;background:#eef2ff;color:#6366f1}
 .badge-green{background:#f0fdf4;color:#16a34a}
+.badge-date{background:#eff6ff;color:#2563eb}
+.badge-upload{background:#f5f3ff;color:#7c3aed}
 .empty{color:#9ca3af;font-size:.85rem;text-align:center;padding:20px 0}
 .search-meta{display:flex;gap:12px;align-items:center;margin-bottom:8px;font-size:.78rem;color:#9ca3af}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-left:8px;vertical-align:middle}
@@ -844,12 +850,8 @@ createApp({
                 onClick: () => { state.mode = "diagnostic"; loadTemplates(); },
               }, "🔬 Diagnostic"),
               h("button", {
-                class: `btn btn-sm btn-outline ${state.mode === "health" ? "active" : ""}`,
-                onClick: () => { state.mode = "health"; loadK8sHealth(); },
-              }, "🏥 Health"),
-              h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "settings" ? "active" : ""}`,
-                onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); },
+                onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); loadK8sHealth(); },
               }, "⚙ Settings"),
             ]),
 
@@ -1353,108 +1355,6 @@ createApp({
               : null,
 
             // Health panel (k8s pod status)
-            state.mode === "health"
-              ? h("div", { class: "health-panel" }, [
-                  state.k8sLoading
-                    ? h("div", { class: "status status-info" }, "Loading cluster health...")
-                    : null,
-                  state.k8sHealth && !state.k8sHealth.available
-                    ? h("div", { class: "status status-muted" }, `Kubernetes not available: ${state.k8sHealth.error || "cluster unreachable"}`)
-                    : null,
-                  state.k8sHealth && state.k8sHealth.available
-                    ? h("div", [
-                        // Summary bar
-                        h("div", { class: "k8s-summary" }, [
-                          h("div", { class: "k8s-stat" }, [
-                            h("div", { class: "k8s-stat-value k8s-running" }, `${state.k8sHealth.summary.running}`),
-                            h("div", { class: "k8s-stat-label" }, "Running"),
-                          ]),
-                          h("div", { class: "k8s-stat" }, [
-                            h("div", { class: "k8s-stat-value" }, `${state.k8sHealth.summary.total}`),
-                            h("div", { class: "k8s-stat-label" }, "Total Pods"),
-                          ]),
-                          state.k8sHealth.summary.pending > 0
-                            ? h("div", { class: "k8s-stat" }, [
-                                h("div", { class: "k8s-stat-value k8s-pending" }, `${state.k8sHealth.summary.pending}`),
-                                h("div", { class: "k8s-stat-label" }, "Pending"),
-                              ])
-                            : null,
-                          state.k8sHealth.summary.failed > 0
-                            ? h("div", { class: "k8s-stat" }, [
-                                h("div", { class: "k8s-stat-value k8s-failed" }, `${state.k8sHealth.summary.failed}`),
-                                h("div", { class: "k8s-stat-label" }, "Failed"),
-                              ])
-                            : null,
-                        ]),
-                        // Pod cards (collapsible)
-                        h("div", { class: "k8s-pods" },
-                          state.k8sHealth.pods.map((pod: any) => {
-                            const key = `pod_${pod.name}`;
-                            const open = (state as any)[key];
-                            return h("div", { class: `k8s-pod ${pod.status === "Running" ? "k8s-pod-ok" : "k8s-pod-err"}` }, [
-                              h("div", {
-                                class: "k8s-pod-header",
-                                onClick: () => ((state as any)[key] = !open),
-                              }, [
-                                h("span", { class: "k8s-pod-icon" }, pod.icon),
-                                h("span", { class: "k8s-pod-component" }, pod.component),
-                                h("span", { class: `k8s-pod-status ${pod.status === "Running" ? "" : "k8s-pod-status-err"}` }, pod.status),
-                                h("span", { class: "k8s-pod-toggle" }, open ? "▼" : "▶"),
-                              ]),
-                              open ? h("div", { class: "k8s-pod-expanded" }, [
-                                h("table", { class: "k8s-pod-table" }, [
-                                  h("tbody", [
-                                    h("tr", [h("td", "Pod"), h("td", pod.name)]),
-                                    h("tr", [h("td", "Node"), h("td", pod.node || "—")]),
-                                    h("tr", [h("td", "Age"), h("td", pod.age || "—")]),
-                                    h("tr", [h("td", "Restarts"), h("td", `${pod.restarts}`)]),
-                                    h("tr", [h("td", "CPU Usage"), h("td", pod.cpu_usage || "—")]),
-                                    h("tr", [h("td", "CPU Request"), h("td", pod.cpu || "—")]),
-                                    h("tr", [h("td", "Memory Usage"), h("td", pod.memory_usage || "—")]),
-                                    h("tr", [h("td", "Memory Request"), h("td", pod.memory || "—")]),
-                                    h("tr", [h("td", "Disk (PVC)"), h("td", pod.disk || "—")]),
-                                    h("tr", [h("td", "Image"), h("td", pod.image || "—")]),
-                                    h("tr", [h("td", "Image Hash"), h("td", pod.image_hash || "—")]),
-                                    h("tr", [h("td", "Started"), h("td", pod.started_at || "—")]),
-                                  ]),
-                                ]),
-                                // Event history dropdown
-                                pod.events && pod.events.length > 0
-                                  ? h("div", { class: "k8s-events" }, [
-                                      h("div", {
-                                        class: "k8s-events-toggle",
-                                        onClick: () => ((state as any)[`ev_${pod.name}`] = !(state as any)[`ev_${pod.name}`]),
-                                      }, [
-                                        h("span", (state as any)[`ev_${pod.name}`] ? "▼" : "▶"),
-                                        h("span", ` Event History (${pod.events.length})`),
-                                      ]),
-                                      (state as any)[`ev_${pod.name}`]
-                                        ? h("div", { class: "k8s-events-list" },
-                                            pod.events.map((ev: any) =>
-                                              h("div", { class: `k8s-event k8s-event-${ev.type === "Normal" ? "normal" : "warn"}` }, [
-                                                h("span", { class: "k8s-event-time" }, ev.time),
-                                                h("span", { class: "k8s-event-reason" }, ev.reason),
-                                                h("span", { class: "k8s-event-msg" }, ev.message),
-                                              ]),
-                                            ),
-                                          )
-                                        : null,
-                                    ])
-                                  : null,
-                              ]) : null,
-                            ]);
-                          }),
-                        ),
-                        h("button", {
-                          class: "btn btn-sm btn-outline",
-                          style: "margin-top:10px",
-                          onClick: loadK8sHealth,
-                        }, "Refresh"),
-                      ])
-                    : null,
-                ])
-              : null,
-
             // Settings panel
             state.mode === "settings"
               ? h("div", { class: "settings-panel" }, [
@@ -1511,6 +1411,111 @@ createApp({
                               : null,
                           ])
                         : null,
+                    ]) : null,
+                  ]),
+
+                  // Kubernetes Cluster section (collapsible)
+                  h("div", { class: "collapsible" }, [
+                    h("div", {
+                      class: "collapsible-header",
+                      onClick: () => { state.k8sOpen = !state.k8sOpen; if (state.k8sOpen && !state.k8sHealth) loadK8sHealth(); },
+                    }, [
+                      h("span", state.k8sOpen ? "▼" : "▶"),
+                      h("span", " Kubernetes Cluster"),
+                      state.k8sLoading ? h("span", { class: "spinner spinner-dark", style: "margin-left:8px" }) : null,
+                    ]),
+                    state.k8sOpen ? h("div", { class: "collapsible-body" }, [
+                      state.k8sHealth && !state.k8sHealth.available
+                        ? h("div", { class: "status status-muted" }, `Not available: ${state.k8sHealth.error || "cluster unreachable"}`)
+                        : null,
+                      state.k8sHealth && state.k8sHealth.available
+                        ? h("div", [
+                            h("div", { class: "k8s-summary" }, [
+                              h("div", { class: "k8s-stat" }, [
+                                h("div", { class: "k8s-stat-value k8s-running" }, `${state.k8sHealth.summary.running}`),
+                                h("div", { class: "k8s-stat-label" }, "Running"),
+                              ]),
+                              h("div", { class: "k8s-stat" }, [
+                                h("div", { class: "k8s-stat-value" }, `${state.k8sHealth.summary.total}`),
+                                h("div", { class: "k8s-stat-label" }, "Total Pods"),
+                              ]),
+                              state.k8sHealth.summary.pending > 0
+                                ? h("div", { class: "k8s-stat" }, [
+                                    h("div", { class: "k8s-stat-value k8s-pending" }, `${state.k8sHealth.summary.pending}`),
+                                    h("div", { class: "k8s-stat-label" }, "Pending"),
+                                  ])
+                                : null,
+                              state.k8sHealth.summary.failed > 0
+                                ? h("div", { class: "k8s-stat" }, [
+                                    h("div", { class: "k8s-stat-value k8s-failed" }, `${state.k8sHealth.summary.failed}`),
+                                    h("div", { class: "k8s-stat-label" }, "Failed"),
+                                  ])
+                                : null,
+                            ]),
+                            h("div", { class: "k8s-pods" },
+                              state.k8sHealth.pods.map((pod: any) => {
+                                const key = `pod_${pod.name}`;
+                                const open = (state as any)[key];
+                                return h("div", { class: `k8s-pod ${pod.status === "Running" ? "k8s-pod-ok" : "k8s-pod-err"}` }, [
+                                  h("div", {
+                                    class: "k8s-pod-header",
+                                    onClick: () => ((state as any)[key] = !open),
+                                  }, [
+                                    h("span", { class: "k8s-pod-icon" }, pod.icon),
+                                    h("span", { class: "k8s-pod-component" }, pod.component),
+                                    h("span", { class: `k8s-pod-status ${pod.status === "Running" ? "" : "k8s-pod-status-err"}` }, pod.status),
+                                    h("span", { class: "k8s-pod-toggle" }, open ? "▼" : "▶"),
+                                  ]),
+                                  open ? h("div", { class: "k8s-pod-expanded" }, [
+                                    h("table", { class: "k8s-pod-table" }, [
+                                      h("tbody", [
+                                        h("tr", [h("td", "Pod"), h("td", pod.name)]),
+                                        h("tr", [h("td", "Node"), h("td", pod.node || "—")]),
+                                        h("tr", [h("td", "Age"), h("td", pod.age || "—")]),
+                                        h("tr", [h("td", "Restarts"), h("td", `${pod.restarts}`)]),
+                                        h("tr", [h("td", "CPU Usage"), h("td", pod.cpu_usage || "—")]),
+                                        h("tr", [h("td", "CPU Request"), h("td", pod.cpu || "—")]),
+                                        h("tr", [h("td", "Memory Usage"), h("td", pod.memory_usage || "—")]),
+                                        h("tr", [h("td", "Memory Request"), h("td", pod.memory || "—")]),
+                                        h("tr", [h("td", "Disk (PVC)"), h("td", pod.disk || "—")]),
+                                        h("tr", [h("td", "Image"), h("td", pod.image || "—")]),
+                                        h("tr", [h("td", "Image Hash"), h("td", pod.image_hash || "—")]),
+                                        h("tr", [h("td", "Started"), h("td", pod.started_at || "—")]),
+                                      ]),
+                                    ]),
+                                    pod.events && pod.events.length > 0
+                                      ? h("div", { class: "k8s-events" }, [
+                                          h("div", {
+                                            class: "k8s-events-toggle",
+                                            onClick: () => ((state as any)[`ev_${pod.name}`] = !(state as any)[`ev_${pod.name}`]),
+                                          }, [
+                                            h("span", (state as any)[`ev_${pod.name}`] ? "▼" : "▶"),
+                                            h("span", ` Event History (${pod.events.length})`),
+                                          ]),
+                                          (state as any)[`ev_${pod.name}`]
+                                            ? h("div", { class: "k8s-events-list" },
+                                                pod.events.map((ev: any) =>
+                                                  h("div", { class: `k8s-event k8s-event-${ev.type === "Normal" ? "normal" : "warn"}` }, [
+                                                    h("span", { class: "k8s-event-time" }, ev.time),
+                                                    h("span", { class: "k8s-event-reason" }, ev.reason),
+                                                    h("span", { class: "k8s-event-msg" }, ev.message),
+                                                  ]),
+                                                ),
+                                              )
+                                            : null,
+                                        ])
+                                      : null,
+                                  ]) : null,
+                                ]);
+                              }),
+                            ),
+                            h("button", {
+                              class: "btn btn-sm btn-outline",
+                              style: "margin-top:10px",
+                              onClick: loadK8sHealth,
+                            }, "Refresh"),
+                          ])
+                        : !state.k8sLoading ? h("div", { class: "status status-muted" }, "Loading...") : null,
                     ]) : null,
                   ]),
 
@@ -1679,7 +1684,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -1706,7 +1711,7 @@ createApp({
           ]),
 
           // Results card (hidden in settings mode)
-          state.mode !== "settings" && state.mode !== "create" && state.mode !== "health" && (hasResults.value || state.searchError || state.searchTime !== null)
+          state.mode !== "settings" && state.mode !== "create" && (hasResults.value || state.searchError || state.searchTime !== null)
             ? h("div", { class: "card" }, [
                 h("h2", "Results"),
                 state.searchTime !== null
@@ -1892,9 +1897,11 @@ createApp({
                                     class: "doc-title",
                                     href: `${apiBase}/documents/${d.document_id}/file`,
                                     target: "_blank",
-                                    title: "Open document",
+                                    title: d.original_filename || d.title,
                                   }, d.title),
                                   h("span", { style: "display:flex;gap:6px;align-items:center" }, [
+                                    h("span", { class: "badge badge-date", title: "Document date" }, d.document_date || "—"),
+                                    h("span", { class: "badge badge-upload", title: "Uploaded" }, d.uploaded_at ? d.uploaded_at.split("T")[0] : "—"),
                                     h("span", { class: "badge" }, d.document_type),
                                     h("span", {
                                       class: `badge ${d.status === "indexed" ? "badge-green" : ""}`,

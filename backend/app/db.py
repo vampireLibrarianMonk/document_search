@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS documents (
     category TEXT NOT NULL DEFAULT 'Uncategorized',
     tags TEXT[] NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'pending',
-    content_hash TEXT
+    content_hash TEXT,
+    document_date TEXT,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Add columns if upgrading from older schema
@@ -41,6 +43,16 @@ END $$;
 
 DO $$ BEGIN
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS original_filename TEXT NOT NULL DEFAULT '';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_date TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMP NOT NULL DEFAULT NOW();
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
