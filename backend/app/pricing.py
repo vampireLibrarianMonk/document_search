@@ -218,7 +218,20 @@ def estimate_cost(
 ) -> float:
     """Estimate the cost in USD for a given number of tokens."""
     prices = fetch_pricing(region)
+    # Exact match first
     model_prices = prices.get(model_id, {})
+    if not model_prices:
+        # Strip us./global. prefix and try again
+        clean_id = model_id.replace("us.", "").replace("global.", "")
+        model_prices = prices.get(clean_id, {})
+    if not model_prices:
+        # Fuzzy: find any key that starts with the model base name
+        clean_id = model_id.replace("us.", "").replace("global.", "")
+        base = clean_id.split(":")[0].split("-v1")[0]
+        for key in prices:
+            if key.startswith(base):
+                model_prices = prices[key]
+                break
     if not model_prices:
         return 0.0
     input_cost = (input_tokens / 1000) * model_prices.get("input_per_1k", 0)

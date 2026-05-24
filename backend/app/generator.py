@@ -21,7 +21,7 @@ _BASE_RULES = (
     "- Use only information from the provided source documents\n"
     "- Include specific details, numbers, addresses, and names from the source material\n"
     "- If the source material doesn't contain enough information, say so clearly\n"
-    "- Write in plain English that a homeowner would understand"
+    "- Write in plain English that a non-expert would understand"
 )
 
 _FORMAT_INSTRUCTIONS = {
@@ -51,14 +51,46 @@ _FORMAT_INSTRUCTIONS = {
         "- Aim for no more than 30 lines total"
     ),
     "pptx": (
-        "Structure the output as a presentation with EXACTLY this format:\n"
-        "- First level-1 heading (# Title) becomes the title slide\n"
-        "- Each level-2 heading (## Slide Title) becomes a new slide\n"
-        "- Under each slide heading, use bullet points (- item)\n"
-        "- Keep each slide to 4-6 bullet points maximum\n"
-        "- Keep bullet points short (one line each)\n"
-        "- Include a final slide with summary or contact info\n"
-        "- Aim for 5-8 slides total"
+        "Structure the output as a presentation. You MUST follow this EXACT format with NO exceptions:\n"
+        "\n"
+        "REQUIRED ELEMENTS (all three are mandatory):\n"
+        "1. Slides: # Title for title slide, ## Heading for each content slide, - bullets under each\n"
+        "2. Diagrams: At least ONE slide MUST contain a ```plantuml code block with a workflow/process diagram\n"
+        "3. Speaker notes: EVERY slide MUST end with <!-- notes: 1-2 sentence talk track -->\n"
+        "\n"
+        "RULES:\n"
+        "- 5-8 slides total, 4-6 bullets per slide\n"
+        "- Keep bullets short (one line each)\n"
+        "- PlantUML must use @startuml/@enduml, !theme plain, and simple activity diagram syntax\n"
+        "\n"
+        "EXAMPLE of correct output format:\n"
+        "# My Presentation Title\n"
+        "- Subtitle goes here\n"
+        "<!-- notes: Welcome everyone to this overview. -->\n"
+        "\n"
+        "## Process Overview\n"
+        "```plantuml\n"
+        "@startuml\n"
+        "!theme plain\n"
+        "start\n"
+        ":Step one;\n"
+        ":Step two;\n"
+        "if (Decision?) then (yes)\n"
+        "  :Option A;\n"
+        "else (no)\n"
+        "  :Option B;\n"
+        "endif\n"
+        "stop\n"
+        "@enduml\n"
+        "```\n"
+        "<!-- notes: This diagram shows the overall process flow. -->\n"
+        "\n"
+        "## Key Points\n"
+        "- First important point\n"
+        "- Second important point\n"
+        "<!-- notes: These are the main takeaways for the audience. -->\n"
+        "\n"
+        "Follow this format EXACTLY. Do not omit diagrams or speaker notes."
     ),
     "txt": (
         "Structure the output as a plain-text email ready to send:\n"
@@ -119,7 +151,18 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
         f"You are a professional document writer. {mode_intro}\n\n" f"Output format instructions:\n{format_instruction}\n\n" f"Rules:\n{_BASE_RULES}"
     )
 
-    user_msg = f"Source documents:\n{context}\n\n" f"Request: {prompt}\n\n" "Generate the document in Markdown format following the format instructions above."
+    user_msg = f"Source documents:\n{context}\n\n" f"Request: {prompt}\n\n"
+
+    if effective_fmt == "pptx":
+        user_msg += (
+            "Generate the presentation in Markdown format. CRITICAL REQUIREMENTS:\n"
+            "1. You MUST include at least one ```plantuml code block with an activity diagram\n"
+            "2. You MUST include <!-- notes: ... --> after EVERY slide section\n"
+            "3. Use # for title slide, ## for content slides, - for bullets\n"
+            "Do NOT skip the diagram or notes. They are mandatory."
+        )
+    else:
+        user_msg += "Generate the document in Markdown format following the format instructions above."
 
     resp = client.converse(
         modelId=model_id,
@@ -315,157 +358,11 @@ def convert_to_png(markdown_content: str) -> bytes:
 
 
 def convert_to_pptx(markdown_content: str) -> bytes:
-    """Convert markdown to a styled PPTX using python-pptx for full control."""
-    import io
+    """Convert markdown to a styled PPTX with diagrams and speaker notes."""
+    from .pptx_builder import build_pptx, parse_enhanced_markdown
 
-    from pptx import Presentation
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-    from pptx.util import Inches, Pt
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
-
-    # Parse markdown into slides
-    slides_data = _parse_slides(markdown_content)
-
-    # Colors
-    NAVY = RGBColor(0x1A, 0x1A, 0x2E)
-    GRAY = RGBColor(0x4B, 0x55, 0x63)
-    LIGHT_BG = RGBColor(0xF8, 0xFA, 0xFC)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-
-    for i, slide_data in enumerate(slides_data):
-        if i == 0:
-            # Title slide
-            slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-            # Dark background
-            bg = slide.background
-            fill = bg.fill
-            fill.solid()
-            fill.fore_color.rgb = NAVY
-
-            # Title
-            left, top = Inches(1), Inches(2.5)
-            txBox = slide.shapes.add_textbox(left, top, Inches(11), Inches(2))
-            tf = txBox.text_frame
-            tf.word_wrap = True
-            p = tf.paragraphs[0]
-            p.text = slide_data["title"]
-            p.font.size = Pt(40)
-            p.font.bold = True
-            p.font.color.rgb = WHITE
-            p.alignment = PP_ALIGN.CENTER
-
-            # Subtitle line
-            if slide_data.get("bullets"):
-                p2 = tf.add_paragraph()
-                p2.text = slide_data["bullets"][0] if slide_data["bullets"] else ""
-                p2.font.size = Pt(18)
-                p2.font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
-                p2.alignment = PP_ALIGN.CENTER
-        else:
-            # Content slide
-            slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-            bg = slide.background
-            fill = bg.fill
-            fill.solid()
-            fill.fore_color.rgb = LIGHT_BG
-
-            # Title bar
-            title_bar = slide.shapes.add_shape(
-                1,
-                Inches(0),
-                Inches(0),
-                prs.slide_width,
-                Inches(1.2),
-            )
-            title_bar.fill.solid()
-            title_bar.fill.fore_color.rgb = NAVY
-            title_bar.line.fill.background()
-
-            # Title text
-            txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.2), Inches(11), Inches(0.9))
-            tf = txBox.text_frame
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            p = tf.paragraphs[0]
-            p.text = slide_data["title"]
-            p.font.size = Pt(28)
-            p.font.bold = True
-            p.font.color.rgb = WHITE
-
-            # Bullet points
-            if slide_data.get("bullets"):
-                content_box = slide.shapes.add_textbox(
-                    Inches(1),
-                    Inches(1.6),
-                    Inches(11),
-                    Inches(5.2),
-                )
-                tf = content_box.text_frame
-                tf.word_wrap = True
-
-                for j, bullet in enumerate(slide_data["bullets"]):
-                    if j == 0:
-                        p = tf.paragraphs[0]
-                    else:
-                        p = tf.add_paragraph()
-                    p.text = bullet
-                    p.font.size = Pt(18)
-                    p.font.color.rgb = GRAY
-                    p.space_after = Pt(12)
-                    p.level = 0
-
-            # Slide number
-            num_box = slide.shapes.add_textbox(
-                Inches(12.2),
-                Inches(7),
-                Inches(0.8),
-                Inches(0.4),
-            )
-            num_tf = num_box.text_frame
-            num_p = num_tf.paragraphs[0]
-            num_p.text = str(i + 1)
-            num_p.font.size = Pt(10)
-            num_p.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
-            num_p.alignment = PP_ALIGN.RIGHT
-
-    buf = io.BytesIO()
-    prs.save(buf)
-    return buf.getvalue()
-
-
-def _parse_slides(markdown: str) -> list[dict]:
-    """Parse markdown into slide data: [{title, bullets}, ...]"""
-    slides = []
-    current: dict = {"title": "", "bullets": []}
-
-    for line in markdown.split("\n"):
-        line = line.rstrip()
-        if line.startswith("# "):
-            if current["title"]:
-                slides.append(current)
-            current = {"title": line[2:].strip(), "bullets": []}
-        elif line.startswith("## "):
-            if current["title"]:
-                slides.append(current)
-            current = {"title": line[3:].strip(), "bullets": []}
-        elif line.startswith("- ") or line.startswith("* "):
-            current["bullets"].append(line[2:].strip())
-        elif line.startswith("☐ "):
-            current["bullets"].append("☐ " + line[2:].strip())
-        elif line.startswith("**") and line.endswith("**"):
-            current["bullets"].append(line.strip("*").strip())
-        elif line.strip() and not line.startswith("#"):
-            # Regular text becomes a bullet
-            if line.strip():
-                current["bullets"].append(line.strip())
-
-    if current["title"]:
-        slides.append(current)
-
-    return slides if slides else [{"title": "Untitled", "bullets": ["No content generated"]}]
+    slides_data = parse_enhanced_markdown(markdown_content)
+    return build_pptx(slides_data)
 
 
 def convert_to_txt(markdown_content: str) -> bytes:

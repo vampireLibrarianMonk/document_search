@@ -1,0 +1,56 @@
+[
+  {
+    "model": "deepseek.v3.2",
+    "duration": 13.619199514389038,
+    "slides": 8,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 38
+  },
+  {
+    "model": "qwen.qwen3-32b-v1:0",
+    "duration": 5.448124885559082,
+    "slides": 8,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 37
+  },
+  {
+    "model": "amazon.nova-pro-v1:0",
+    "duration": 3.2107110023498535,
+    "slides": 5,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 33
+  },
+  {
+    "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+    "duration": 15.98449420928955,
+    "slides": 6,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 35
+  },
+  {
+    "model": "nvidia.nemotron-super-3-120b",
+    "duration": 5.908196210861206,
+    "slides": 8,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 38
+  },
+  {
+    "model": "mistral.mistral-large-2402-v1:0",
+    "duration": 13.495374202728271,
+    "slides": 5,
+    "diagrams": 0,
+    "rendered": 0,
+    "notes": 0,
+    "pptx_kb": 33
+  }
+]

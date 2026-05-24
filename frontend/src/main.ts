@@ -65,7 +65,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "templates" | "diagnostic" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -119,6 +119,14 @@ const state = reactive({
   k8sHealth: null as any,
   k8sLoading: false,
   k8sOpen: false,
+
+  // Tasks
+  taskPrompt: "",
+  taskDocIds: [] as string[],
+  taskHistory: [] as Array<{ role: string; content: string }>,
+  taskResult: "",
+  taskLoading: false,
+  taskRefinement: "",
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -479,6 +487,60 @@ async function loadK8sHealth() {
   state.k8sLoading = false;
 }
 
+async function runTask(refinement?: string) {
+  state.taskLoading = true;
+  (state as any).taskStatus = "";
+  const prompt = refinement || state.taskPrompt;
+  try {
+    const resp = await fetch(`${apiBase}/tasks/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        document_ids: state.taskDocIds,
+        history: state.taskHistory,
+        format: "md",
+      }),
+    });
+    const reader = resp.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.status) (state as any).taskStatus = data.status;
+            if (data.error) { state.taskResult = `Error: ${data.error}`; }
+            if (data.result) {
+              state.taskResult = data.result.markdown;
+              state.taskHistory = data.result.history || [];
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    }
+  } catch (e: any) {
+    state.taskResult = `Error: ${e.message}`;
+  }
+  state.taskLoading = false;
+  state.taskRefinement = "";
+  (state as any).taskStatus = "";
+}
+
+function resetTask() {
+  state.taskPrompt = "";
+  state.taskDocIds = [];
+  state.taskHistory = [];
+  state.taskResult = "";
+  state.taskRefinement = "";
+}
+
 function checkModelWarnings() {
   const warnings: string[] = [];
   if (!state.config.BEDROCK_MODEL_ID) {
@@ -636,7 +698,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .result-title{font-weight:600;font-size:.9rem;color:#1a1a2e;text-decoration:none;display:block}
 .result-title:hover{color:#6366f1;text-decoration:underline}
 .result-meta{font-size:.75rem;color:#9ca3af;margin-top:2px}
-.result-snippet{font-size:.85rem;color:#4b5563;margin-top:6px;line-height:1.45}
+.result-snippet{font-size:.85rem;color:#4b5563;margin-top:6px;line-height:1.45;padding:8px 12px;background:#f9fafb;border-radius:6px;border-left:3px solid #e5e7eb}
+.result-snippet mark{background:#fef08a;padding:1px 2px;border-radius:2px}
 .doc-list{list-style:none}
 .doc-list li{padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:.85rem;display:flex;justify-content:space-between;align-items:center}
 .doc-list li:last-child{border-bottom:none}
@@ -838,9 +901,9 @@ createApp({
                 onClick: () => (state.mode = "ask"),
               }, "Ask AI"),
               h("button", {
-                class: `btn btn-sm btn-outline ${state.mode === "create" ? "active" : ""}`,
-                onClick: () => { state.mode = "create"; loadConfig(); loadTemplates(); },
-              }, "✏ Create"),
+                class: `btn btn-sm btn-outline ${state.mode === "tasks" ? "active" : ""}`,
+                onClick: () => { state.mode = "tasks"; },
+              }, "🧠 Tasks"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "templates" ? "active" : ""}`,
                 onClick: () => { state.mode = "templates"; loadTemplates(); },
@@ -855,203 +918,61 @@ createApp({
               }, "⚙ Settings"),
             ]),
 
-            // Create panel
-            state.mode === "create"
+
+            // Tasks panel
+            state.mode === "tasks"
               ? h("div", { class: "create-panel" }, [
-                  h("textarea", {
-                    class: "create-textarea",
-                    value: state.generatePrompt,
-                    placeholder: "Describe the document you want to create...\n\nExample: Write a summary of all HOA fence and shed rules including height limits and approval requirements.",
-                    onInput: (e: Event) => onPromptInput((e.target as HTMLTextAreaElement).value),
-                    disabled: state.generateLoading,
-                  }),
-                  // Document source selector
-                  h("div", { class: "create-source" }, [
-                    h("label", { class: "create-source-label" },
-                      state.generateSelectedDocs.length > 0
-                        ? `Source: ${state.generateSelectedDocs.length} document${state.generateSelectedDocs.length === 1 ? "" : "s"} selected`
-                        : "Source: auto-search (or pick specific documents below)",
-                    ),
-                    h("div", { class: "create-doc-picker" },
-                      state.documents.map((d) =>
-                        h("label", { class: "create-doc-option" }, [
+                  h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
+                    h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Task Workflow"),
+                    state.taskHistory.length > 0
+                      ? h("button", { class: "btn btn-sm btn-outline", onClick: resetTask }, "New Task")
+                      : null,
+                  ]),
+                  // Document selector
+                  h("div", { style: "margin-bottom:10px" }, [
+                    h("label", { style: "font-size:.75rem;color:#6b7280;display:block;margin-bottom:4px" }, "Source Documents (optional — auto-search finds relevant docs from your prompt):"),
+                    h("div", { style: "max-height:150px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;padding:6px" },
+                      state.documents.map((d: any) =>
+                        h("label", { style: "display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:.8rem;cursor:pointer" }, [
                           h("input", {
                             type: "checkbox",
-                            checked: state.generateSelectedDocs.includes(d.document_id),
-                            onChange: () => {
-                              if (state.generateSelectedDocs.includes(d.document_id)) {
-                                state.generateSelectedDocs = state.generateSelectedDocs.filter((id: string) => id !== d.document_id);
-                              } else {
-                                state.generateSelectedDocs = [...state.generateSelectedDocs, d.document_id];
-                              }
+                            checked: state.taskDocIds.includes(d.document_id),
+                            onChange: (e: any) => {
+                              if (e.target.checked) { state.taskDocIds = [...state.taskDocIds, d.document_id]; }
+                              else { state.taskDocIds = state.taskDocIds.filter((id: string) => id !== d.document_id); }
                             },
                           }),
                           h("span", d.title),
                         ]),
                       ),
                     ),
+                    state.taskDocIds.length > 0
+                      ? h("div", { style: "font-size:.7rem;color:#6366f1;margin-top:4px" }, `${state.taskDocIds.length} documents selected`)
+                      : null,
                   ]),
-                  // Template selector (minimal — manage in Templates tab)
-                  state.templates.length > 0
-                    ? h("div", { class: "create-source", style: "margin-top:8px" }, [
-                        h("div", { style: "display:flex;align-items:center;gap:8px" }, [
-                          h("label", { class: "create-source-label" }, "Template:"),
-                          h("select", {
-                            class: "config-input",
-                            style: "flex:1",
-                            value: state.selectedTemplateId,
-                            onChange: (e: Event) => {
-                              state.selectedTemplateId = (e.target as HTMLSelectElement).value;
-                            },
-                          }, [
-                            h("option", { value: "" }, "— None (freeform) —"),
-                            ...state.templates.map((t: any) =>
-                              h("option", { value: t.template_id }, `${t.name} (${t.source_format})`),
-                            ),
-                          ]),
+                  // Prompt / refinement
+                  !state.taskResult
+                    ? h("div", [
+                        h("textarea", { class: "create-textarea", placeholder: "Describe the document you want to create...", value: state.taskPrompt, onInput: (e: any) => (state.taskPrompt = e.target.value), style: "min-height:100px" }),
+                        h("button", { class: "btn btn-primary", style: "margin-top:8px", disabled: state.taskLoading || !state.taskPrompt.trim(), onClick: () => runTask() }, state.taskLoading ? "Generating..." : "Generate"),
+                        (state as any).taskStatus ? h("div", { style: "margin-top:8px;font-size:.78rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [h("span", { class: "spinner spinner-dark" }), h("span", (state as any).taskStatus)]) : null,
+                      ])
+                    : h("div", [
+                        h("div", { style: "border:1px solid #e5e7eb;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap;background:#fafafa;margin-bottom:10px" }, state.taskResult),
+                        h("div", { style: "display:flex;gap:8px;align-items:flex-end" }, [
+                          h("textarea", { class: "create-textarea", placeholder: "Refine: e.g. 'Add Brax Roofing' or 'Add a cost comparison table'", value: state.taskRefinement, onInput: (e: any) => (state.taskRefinement = e.target.value), style: "min-height:60px;flex:1" }),
+                          h("button", { class: "btn btn-primary", disabled: state.taskLoading || !state.taskRefinement.trim(), onClick: () => runTask(state.taskRefinement) }, state.taskLoading ? "..." : "Refine"),
                         ]),
-                      ])
-                    : null,
-                  // Format detection status bar
-                  (state.detectedFormat || state.detectingFormat)
-                    ? h("div", { class: "detect-bar" }, [
-                        state.detectingFormat
-                          ? h("span", { class: "detect-loading" }, "Detecting format...")
-                          : state.detectedAccepted === true
-                            ? h("span", { class: "detect-accepted" }, [
-                                "✅ ",
-                                `Detected: ${({md:"Markdown",docx:"Word",pdf:"PDF",png:"Image",pptx:"PowerPoint",txt:"Email/Text"} as any)[state.detectedFormat]} — ${state.detectedReason}`,
-                                h("button", {
-                                  class: "detect-reject",
-                                  title: "Override",
-                                  onClick: () => { state.detectedAccepted = false; },
-                                }, "✕"),
-                              ])
-                            : state.detectedAccepted === false
-                              ? h("span", { class: "detect-rejected" }, "❌ Overridden — pick format manually below")
-                              : null,
-                      ])
-                    : null,
-                  h("div", { class: "create-controls" }, [
-                    h("select", {
-                      class: "config-input",
-                      style: "width:auto",
-                      value: state.generateFormat,
-                      onChange: (e: Event) => {
-                        state.generateFormat = (e.target as HTMLSelectElement).value;
-                      },
-                    }, [
-                      h("option", { value: "md" }, "Markdown (.md)"),
-                      h("option", { value: "docx" }, "Word (.docx)"),
-                      h("option", { value: "pdf" }, "PDF (.pdf)"),
-                      h("option", { value: "png" }, "Image (.png)"),
-                      h("option", { value: "pptx" }, "PowerPoint (.pptx)"),
-                      h("option", { value: "txt" }, "Email/Text (.txt)"),
-                    ]),
-                    h("button", {
-                      class: "btn btn-primary",
-                      disabled: state.generateLoading || !state.generatePrompt.trim(),
-                      onClick: generateDoc,
-                    }, [
-                      state.generateLoading ? "Generating..." : "Generate",
-                      state.generateLoading ? h("span", { class: "spinner" }) : null,
-                    ]),
-                    state.selectedTemplateId
-                      ? h("button", {
-                          class: "btn btn-primary",
-                          style: "background:#16a34a",
-                          disabled: state.generateLoading || !state.generatePrompt.trim(),
-                          onClick: async () => {
-                            state.generateLoading = true;
-                            state.generateError = "";
-                            try {
-                              const resp = await fetch(`${apiBase}/templates/${state.selectedTemplateId}/fill`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  prompt: state.generatePrompt,
-                                  document_ids: state.generateSelectedDocs.length > 0 ? state.generateSelectedDocs : undefined,
-                                }),
-                              });
-                              if (!resp.ok) {
-                                const err = await resp.json();
-                                state.generateError = err.detail || "Fill failed";
-                                return;
-                              }
-                              const blob = await resp.blob();
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              const tmplName = state.templates.find((t: any) => t.template_id === state.selectedTemplateId)?.name || "filled";
-                              a.href = url;
-                              a.download = `${tmplName.replace(/\s+/g, '_')}_filled.docx`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                              state.generateDone = true;
-                            } catch (e: any) {
-                              state.generateError = e.message || "Fill template failed";
-                            } finally {
-                              state.generateLoading = false;
-                            }
-                          },
-                        }, [
-                          state.generateLoading ? "Filling..." : "📄 Fill Template",
-                          state.generateLoading ? h("span", { class: "spinner" }) : null,
-                        ])
-                      : null,
-                    state.generateDone
-                      ? h("button", {
-                          class: "btn btn-outline",
-                          onClick: () => { (state as any).showPreview = !(state as any).showPreview; },
-                        }, (state as any).showPreview ? "Hide Preview" : "Preview")
-                      : null,
-                    state.generateDone
-                      ? h("button", {
-                          class: "btn btn-primary btn-sm",
-                          disabled: state.generateDownloading,
-                          onClick: () => downloadGenerated(),
-                        }, [
-                          state.generateDownloading ? "Converting..." : `Download .${state.generateFormat}`,
-                          state.generateDownloading ? h("span", { class: "spinner" }) : null,
-                        ])
-                      : null,
-                  ]),
-                  state.generateError
-                    ? h("div", { class: "status status-error", style: "margin-top:8px" }, state.generateError)
-                    : null,
-                  // Preview (toggled)
-                  state.generateDone && (state as any).showPreview
-                    ? h("div", { class: "create-preview" }, state.generateResult)
-                    : null,
-                  // History
-                  state.generateHistory.length > 0
-                    ? h("div", { class: "create-history" }, [
-                        h("div", { style: "font-weight:600;font-size:.78rem;color:#9ca3af;margin-bottom:4px" }, "Generation History"),
-                        ...state.generateHistory.map((item: any) =>
-                          h("div", { class: "history-item" }, [
-                            h("span", { class: "badge", style: "font-size:.65rem;margin-right:4px" }, (item.format || "md").toUpperCase()),
-                            h("span", { class: "history-prompt" }, item.prompt),
-                            h("span", { class: "history-time" }, item.timestamp),
-                            h("button", {
-                              class: "btn-view",
-                              title: "Load this generation",
-                              onClick: () => {
-                                state.generateResult = item.markdown;
-                                state.generateDone = true;
-                                (state as any).showPreview = true;
-                              },
-                            }, "↩"),
-                            h("button", {
-                              class: "btn-view",
-                              title: "Download",
-                              onClick: () => downloadGenerated(item.markdown),
-                            }, "⬇"),
-                          ]),
-                        ),
-                      ])
-                    : null,
+                        (state as any).taskStatus ? h("div", { style: "margin-top:8px;font-size:.78rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [h("span", { class: "spinner spinner-dark" }), h("span", (state as any).taskStatus)]) : null,
+                        h("div", { style: "display:flex;gap:8px;margin-top:10px" }, [
+                          h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "pdf" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.pdf"; a.click(); } }, "📥 PDF"),
+                          h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "docx" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.docx"; a.click(); } }, "📥 DOCX"),
+                          h("button", { class: "btn btn-sm btn-outline", onClick: () => { const b = new Blob([state.taskResult], { type: "text/markdown" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.md"; a.click(); } }, "📥 Markdown"),
+                        ]),
+                        h("div", { style: "font-size:.7rem;color:#9ca3af;margin-top:8px" }, `${Math.floor(state.taskHistory.length / 2)} iteration(s)`),
+                      ]),
                 ])
               : null,
-
             // Templates panel
             state.mode === "templates"
               ? h("div", { class: "create-panel" }, [
@@ -1529,20 +1450,52 @@ createApp({
                       h("span", " Configuration"),
                     ]),
                     state.configOpen ? h("div", { class: "collapsible-body" }, [
-                      ...Object.entries(state.configEdits).map(([key, val]: [string, string]) => {
+                      ...Object.entries(state.configEdits)
+                        .filter(([key]) => key !== "BEDROCK_GENERATE_MODEL_ID" && key !== "BEDROCK_TASK_MODEL_ID" && key !== "WORKER_CONCURRENCY" && key !== "MAX_WORKER_CONCURRENCY")
+                        .map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
                         const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
+                        // For task model selectors, add context window hints to help user choose
+                        const modelList = (key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID")
+                          ? models.map((m: any) => {
+                              const id = m.id.toLowerCase();
+                              let ctx = "";
+                              if (id.includes("nova-pro") || id.includes("nova-lite") || id.includes("nova-2")) ctx = " [300k ctx]";
+                              else if (id.includes("claude")) ctx = " [200k ctx]";
+                              else if (id.includes("llama") || id.includes("mistral") || id.includes("deepseek") || id.includes("qwen")) ctx = " [128k ctx]";
+                              else ctx = " [~32-128k ctx]";
+                              const hint = key === "BEDROCK_TASK_SINGLE_MODEL_ID"
+                                ? (ctx.includes("300k") || ctx.includes("200k") ? " ★" : "")
+                                : (id.includes("mistral.magistral") || id.includes("llama") || id.includes("deepseek") ? " ★" : "");
+                              return { ...m, label: m.label + ctx + hint };
+                            })
+                          : key === "BEDROCK_MODEL_ID"
+                            // Ask AI: mark fast/cheap models
+                            ? models.map((m: any) => {
+                                const id = m.id.toLowerCase();
+                                const hint = (id.includes("haiku") || id.includes("nova-lite") || id.includes("nova-pro") || id.includes("nova-micro")) ? " ★ fast" : "";
+                                return { ...m, label: m.label + hint };
+                              })
+                          : key === "BEDROCK_DETECT_MODEL_ID"
+                            // Format detection: only needs tiny fast model
+                            ? models.map((m: any) => {
+                                const id = m.id.toLowerCase();
+                                const hint = (id.includes("micro") || id.includes("nova-lite") || id.includes("haiku") || id.includes("mistral-large")) ? " ★ recommended" : "";
+                                return { ...m, label: m.label + hint };
+                              })
+                          : models;
 
                         return h("div", { class: "config-row" }, [
                           h("label", { class: "config-label" }, ({
-                            "BEDROCK_MODEL_ID": "Ask AI Model",
-                            "BEDROCK_GENERATE_MODEL_ID": "Create Document Model",
-                            "BEDROCK_DETECT_MODEL_ID": "Format Detection Model",
-                            "BEDROCK_TEMPLATE_MODEL_ID": "Template Extraction Model",
-                            "BEDROCK_VISION_MODEL_ID": "Vision OCR Model",
+                            "BEDROCK_MODEL_ID": "Ask AI Model (fast, for interactive Q&A)",
+                            "BEDROCK_TASK_SINGLE_MODEL_ID": "Task Model — Single Pass (large context window)",
+                            "BEDROCK_TASK_MULTI_MODEL_ID": "Task Model — Structured Pipeline (complex tasks)",
+                            "BEDROCK_DETECT_MODEL_ID": "Format Detection Model (fast/cheap, returns 1 word)",
+                            "BEDROCK_TEMPLATE_MODEL_ID": "Template Extraction Model (needs strong JSON)",
+                            "BEDROCK_VISION_MODEL_ID": "Vision OCR Model (must support images)",
                             "AWS_REGION": "AWS Region",
                             "BOOKSTACK_URL": "BookStack URL",
                             "BOOKSTACK_TOKEN_ID": "BookStack Token ID",
@@ -1570,7 +1523,7 @@ createApp({
                                   class: "config-input",
                                   value: val,
                                   onChange: (e: Event) => (state.configEdits[key] = (e.target as HTMLSelectElement).value),
-                                }, models.map((m: any) => h("option", { value: m.id, selected: m.id === val }, m.label)))
+                                }, modelList.map((m: any) => h("option", { value: m.id, selected: m.id === val }, m.label)))
                               : isSecret
                                 ? h("div", { class: "secret-field" }, [
                                     h("input", {
@@ -1614,6 +1567,15 @@ createApp({
                       h("span", " Token Usage & Cost"),
                     ]),
                     state.usageOpen && state.usageData ? h("div", { class: "collapsible-body" }, [
+                      // Pricing gap warning
+                      state.usageData.by_model.some((m: any) => m.calls > 0 && Number(m.cost) === 0)
+                        ? h("div", { style: "background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.75rem;color:#92400e" }, [
+                            h("strong", "⚠️ Pricing unavailable for some models: "),
+                            h("span", state.usageData.by_model.filter((m: any) => m.calls > 0 && Number(m.cost) === 0).map((m: any) => m.model_id.replace("us.","")).join(", ")),
+                            h("br"),
+                            h("span", { style: "color:#a16207" }, "Token counts are accurate. Cost estimates will appear once AWS publishes pricing for these models. Developer: check periodically with 'aws bedrock' pricing updates."),
+                          ])
+                        : null,
                       // Totals
                       h("div", { class: "usage-totals" }, [
                         h("div", { class: "usage-stat" }, [
@@ -1645,7 +1607,7 @@ createApp({
                                   }, [
                                     h("span", open ? "▼ " : "▶ "),
                                     h("span", { class: "usage-model-name" }, shortName),
-                                    h("span", { class: "usage-model-summary" }, `$${Number(m.cost).toFixed(4)}`),
+                                    h("span", { class: "usage-model-summary" }, Number(m.cost) === 0 && m.calls > 0 ? "⚠️ no pricing" : `$${Number(m.cost).toFixed(4)}`),
                                   ]),
                                   open ? h("div", { class: "usage-model-detail-body" }, [
                                     h("div", `Calls: ${m.calls}`),
@@ -1684,7 +1646,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -1731,21 +1693,27 @@ createApp({
                 state.answer
                   ? h("div", { class: "answer-box" }, state.answer)
                   : null,
-                ...(state.mode === "ask" ? state.citations : state.results).map((r: any) =>
-                  h("div", { class: "result-item" }, [
-                    h("a", {
-                      class: "result-title",
-                      href: `${apiBase}/documents/${r.document_id}/file`,
-                      target: "_blank",
-                      title: "Open document",
-                    }, r.title),
-                    h("div", { class: "result-meta" }, [
-                      r.document_type ? h("span", { class: "badge" }, r.document_type) : null,
-                      r.score != null ? ` · score ${r.score}` : null,
+                ...(state.mode === "ask" ? state.citations : state.results).map((r: any, idx: number) => {
+                  const citKey = `cite_${idx}`;
+                  const isOpen = (state as any)[citKey];
+                  return h("div", { class: "result-item" }, [
+                    h("div", { class: "result-header", style: "display:flex;align-items:center;gap:8px;cursor:pointer", onClick: () => ((state as any)[citKey] = !isOpen) }, [
+                      h("span", { style: "font-size:.7rem;color:#9ca3af" }, isOpen ? "▼" : "▶"),
+                      h("a", {
+                        class: "result-title",
+                        href: `${apiBase}/documents/${r.document_id}/file`,
+                        target: "_blank",
+                        title: "Open document",
+                        onClick: (e: Event) => e.stopPropagation(),
+                      }, r.title),
+                      h("span", { class: "result-meta" }, [
+                        r.document_type ? h("span", { class: "badge" }, r.document_type) : null,
+                        r.score != null ? h("span", { style: "font-size:.7rem;color:#9ca3af;margin-left:4px" }, `score ${r.score}`) : null,
+                      ]),
                     ]),
-                    h("div", { class: "result-snippet" }, r.snippet),
-                  ])
-                ),
+                    isOpen ? h("div", { class: "result-snippet", innerHTML: (r.snippet || "").replace(/</g, "&lt;").replace(/&lt;em&gt;/g, "<mark>").replace(/&lt;\/em&gt;/g, "</mark>") }) : null,
+                  ]);
+                }),
               ])
             : null,
 

@@ -546,6 +546,440 @@ def generate_document(body: dict):
     return {"markdown": markdown_content, "format": effective_fmt}
 
 
+# ---------------------------------------------------------------------------
+# Tasks: iterative document generation with conversation history
+# ---------------------------------------------------------------------------
+
+# =========================================================================
+# MODEL INVOCATION HELPERS
+#
+# AWS Bedrock has two ways to call models:
+# 1. On-demand: use the model ID directly (e.g., "amazon.nova-pro-v1:0")
+# 2. Inference profile: prefix with "us." (e.g., "us.anthropic.claude-sonnet-4-6")
+#
+# Some models only work one way. Instead of maintaining a hardcoded list,
+# we try on-demand first and automatically retry with "us." if it fails.
+# Results are cached so we only fail once per model.
+# =========================================================================
+
+_profile_models: set = set()   # models that need "us." prefix
+_ondemand_models: set = set()  # models that work without prefix
+
+
+def _resolve_model_id(model_id: str) -> str:
+    """Check if a model needs the 'us.' inference profile prefix.
+    First call for an unknown model returns it as-is (caller handles fallback).
+    After that, cached result is used.
+    """
+    if model_id.startswith("us.") or model_id.startswith("global."):
+        return model_id
+    if model_id in _profile_models:
+        return f"us.{model_id}"
+    if model_id in _ondemand_models:
+        return model_id
+    return model_id
+
+
+def _call_bedrock_stream(client, model_id: str, system: list, messages: list, max_tokens: int = 4096):
+    """Call any Bedrock model and return the text response.
+    
+    Handles two quirks automatically:
+    1. If the model needs an inference profile ("us." prefix), retries with it
+    2. If the model is a "reasoning" model (OpenAI GPT-OSS, DeepSeek R1), 
+       it returns both thinking tokens and answer tokens — we only keep the answer
+    """
+    resolved = _resolve_model_id(model_id)
+    try:
+        resp = client.converse_stream(
+            modelId=resolved, system=system, messages=messages,
+            inferenceConfig={"maxTokens": max_tokens},
+        )
+        _ondemand_models.add(model_id)
+    except BaseException as e:
+        if not resolved.startswith("us."):
+            # Model doesn't work on-demand — try with inference profile
+            resolved = f"us.{model_id}"
+            _profile_models.add(model_id)
+            resp = client.converse_stream(
+                modelId=resolved, system=system, messages=messages,
+                inferenceConfig={"maxTokens": max_tokens},
+            )
+        else:
+            raise
+
+    # Collect only "text" deltas (skip "reasoningContent" from thinking models)
+    # Also capture usage metadata from the final stream event
+    chunks = []
+    usage = {}
+    for event in resp["stream"]:
+        if "contentBlockDelta" in event:
+            delta = event["contentBlockDelta"]["delta"]
+            if "text" in delta:
+                chunks.append(delta["text"])
+        elif "metadata" in event:
+            usage = event["metadata"].get("usage", {})
+    return "".join(chunks), usage
+
+
+@app.post("/tasks/generate")
+async def task_generate(body: dict):
+    """Generate or refine a document with conversation history.
+    Returns SSE stream with status updates, then final result as JSON event.
+    """
+    from starlette.responses import StreamingResponse
+    import json as _json
+    import asyncio
+
+    prompt = body.get("prompt", "").strip()
+    document_ids = body.get("document_ids", [])
+    history = body.get("history", [])
+    fmt = body.get("format", "md")
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    async def generate_stream():
+        from .schemas import SearchRequest
+
+        yield f"data: {_json.dumps({'status': 'Gathering source documents...'})}\n\n"
+        await asyncio.sleep(0)  # flush
+
+        # Build context from selected documents (full text, no truncation)
+        context_parts = []
+        manual_count = 0
+        seen_ids = set(document_ids)
+        for doc_id in document_ids:
+            doc = store.get_document(doc_id)
+            if not doc:
+                continue
+            chunks = store.get_chunks(doc_id)
+            if chunks:
+                text = "\n".join(c.content for c in chunks)
+                context_parts.append(f"[{doc.title}]\n{text}")
+                manual_count += 1
+
+        # Auto-search for additional relevant documents
+        auto_parts = []
+        if not history:
+            yield f"data: {_json.dumps({'status': 'Searching for relevant documents...'})}\n\n"
+            await asyncio.sleep(0)
+            search_result = run_search(
+                store,
+                SearchRequest(query=prompt, mode="hybrid", page=1, page_size=30),
+            )
+            auto_count = 0
+            for r in search_result.results:
+                if r.document_id not in seen_ids:
+                    seen_ids.add(r.document_id)
+                    doc = store.get_document(r.document_id)
+                    if doc:
+                        chunks = store.get_chunks(r.document_id)
+                        if chunks:
+                            text = "\n".join(c.content for c in chunks)
+                            auto_parts.append(f"[{doc.title}]\n{text}")
+                            auto_count += 1
+            yield f"data: {_json.dumps({'status': f'Found {manual_count + auto_count} relevant documents ({manual_count} selected, {auto_count} auto-discovered)'})}\n\n"
+            await asyncio.sleep(0)
+
+        # Map-reduce: only extract from AUTO-DISCOVERED large docs, never from manually selected
+        MAX_CONTEXT = 150000
+        manual_len = sum(len(p) for p in context_parts)
+        auto_len = sum(len(p) for p in auto_parts)
+        total_len = manual_len + auto_len
+
+        if auto_len > (MAX_CONTEXT - manual_len) and len(auto_parts) > 0:
+            yield f"data: {_json.dumps({'status': f'Extracting relevant info from {len(auto_parts)} auto-discovered documents...'})}\n\n"
+            await asyncio.sleep(0)
+            yield f"data: {_json.dumps({'status': f'Context is {total_len//1000}k chars. Extracting relevant info from large documents...'})}\n\n"
+            await asyncio.sleep(0)
+
+            import boto3 as _boto3
+            from botocore.config import Config as BotoConfig
+            _bedrock_config = BotoConfig(read_timeout=300, connect_timeout=10)
+            _map_client = _boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"), config=_bedrock_config)
+            _map_model = _resolve_model_id(os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "") or "meta.llama3-3-70b-instruct-v1:0")
+
+            extracted_parts = []
+            for i, part in enumerate(auto_parts):
+                if len(part) <= 8000:
+                    extracted_parts.append(part)
+                else:
+                    yield f"data: {_json.dumps({'status': f'Extracting from document {i+1}/{len(auto_parts)}...'})}\n\n"
+                    await asyncio.sleep(0)
+                    try:
+                        loop = asyncio.get_event_loop()
+                        def _map_extract(p=part):
+                            text, _ = _call_bedrock_stream(_map_client, _map_model, [],
+                                [{"role": "user", "content": [{"text":
+                                    f"Extract ONLY the information relevant to this task from the document below. "
+                                    f"Include ALL specific details: company names, license numbers, contact info, prices, dates, addresses, warranty terms, scope of work, and conditions. "
+                                    f"Even if some fields are blank or missing, still include the company and what IS provided. "
+                                    f"Omit generic legal boilerplate and cancellation notices. Be thorough with relevant details.\n\n"
+                                    f"Task: {prompt}\n\n"
+                                    f"Document:\n{p[:80000]}"
+                                }]}])
+                            return text
+
+                        future = loop.run_in_executor(None, _map_extract)
+                        while not future.done():
+                            done, _ = await asyncio.wait({future}, timeout=8)
+                            if not done:
+                                yield ": keepalive\n\n"
+                        extracted = future.result()
+                        doc_title = part.split("\n")[0]
+                        extracted_parts.append(f"{doc_title}\n{extracted}")
+                    except Exception as e:
+                        extracted_parts.append(part[:8000] + "\n[... extraction failed, showing partial ...]")
+
+            auto_parts = extracted_parts
+            yield f"data: {_json.dumps({'status': 'Extraction complete. Generating final document...'})}\n\n"
+            await asyncio.sleep(0)
+
+        # Combine: manual docs (full) + auto docs (possibly extracted)
+        all_context = context_parts + auto_parts
+        total_context_chars = sum(len(p) for p in all_context)
+        yield f"data: {_json.dumps({'status': f'Total context: {total_context_chars//1000}k chars from {len(all_context)} documents'})}\n\n"
+        await asyncio.sleep(0)
+
+        # =====================================================================
+        # ADAPTIVE MODEL ROUTING
+        # 
+        # We use different AI models depending on how much text we need to process:
+        #
+        # SMALL context (fits in one shot):
+        #   → Nova Pro in single-pass mode (score: 8.6/10, speed: ~80s)
+        #   → Nova Pro has a 300k token window so it can read everything at once
+        #   → Best at: getting all prices, fast turnaround
+        #   → Weakness: sometimes doesn't rank options optimally
+        #
+        # LARGE context (too much for one shot):
+        #   → Mistral Magistral in structured pipeline (score: 9.8/10, speed: ~280s)
+        #   → Reads each document separately, fills a structured form (JSON)
+        #   → Forms are merged with code (no AI = no information loss)
+        #   → Then generates final document from the clean structured data
+        #   → Best at: following instructions precisely, not missing details
+        #   → Weakness: slower (has to process each document individually)
+        #
+        # WHY NOT USE THE SAME MODEL FOR BOTH?
+        # Tested 17+ models. Fast models (Nova Pro, Llama) rush through structured
+        # extraction and miss fields. Thorough models (Mistral Magistral) are too
+        # slow for single-pass. Each model type excels at its assigned strategy.
+        #
+        # These sizes come from AWS docs (not available via API unfortunately):
+        # =====================================================================
+        MAX_BATCH_CHARS = 80000  # per-cycle batch size for structured pipeline
+
+        _MODEL_CONTEXT_CHARS = {
+            "amazon.nova-pro": 250000,       # 300k tokens
+            "amazon.nova-lite": 250000,      # 300k tokens
+            "amazon.nova-2-lite": 250000,    # 300k tokens
+            "anthropic.claude-sonnet-4": 160000,  # 200k tokens
+            "anthropic.claude-opus-4": 160000,
+            "anthropic.claude-haiku-4": 160000,
+            "mistral.mistral-large": 100000, # 128k tokens
+            "meta.llama3-3": 100000,         # 128k tokens
+            "meta.llama4": 100000,           # 128k tokens
+            "deepseek": 100000,              # 128k tokens
+            "qwen": 100000,                  # 128k tokens
+        }
+
+        single_model_id = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "") or "amazon.nova-pro-v1:0"
+        # Look up how much text the single-pass model can handle
+        single_pass_limit = 80000  # safe default if model not in table
+        for prefix, limit in _MODEL_CONTEXT_CHARS.items():
+            if single_model_id.startswith(prefix):
+                single_pass_limit = limit
+                break
+
+        # ─── COMPLEXITY DETECTION ───
+        # Some prompts require the structured pipeline regardless of context size.
+        # Testing showed Nova Pro hallucates on complex multi-entity tasks even
+        # when context fits in its window. Detect complexity from prompt signals:
+        import re
+        prompt_lower = prompt.lower()
+        complexity_signals = (
+            len(re.findall(r'section \d|## \d|step \d', prompt_lower)) >= 3  # multiple sections requested
+            or ("rank" in prompt_lower and ("all" in prompt_lower or "every" in prompt_lower))  # exhaustive ranking
+            or (prompt_lower.count("compare") + prompt_lower.count(" vs ") + prompt_lower.count("best to worst")) >= 1  # comparison task
+            or (len(re.findall(r'\ball\b.*\b(contractor|compan|vendor|provider)', prompt_lower)) >= 1)  # exhaustive entity search
+        )
+
+        if complexity_signals and total_context_chars > 30000:
+            # Complex task with substantial context — use structured pipeline
+            strategy = "structured"
+            model_id = _resolve_model_id(os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "") or "mistral.magistral-small-2509")
+            yield f"data: {_json.dumps({'status': f'Strategy: structured (complex prompt detected) ({model_id})'})}\n\n"
+        elif total_context_chars <= single_pass_limit:
+            # Simple task or small context — use the fast single-pass model
+            strategy = "single"
+            model_id = _resolve_model_id(single_model_id)
+            yield f"data: {_json.dumps({'status': f'Strategy: single-pass ({model_id})'})}\n\n"
+        else:
+            # Too much text for one shot — use structured pipeline with thorough model
+            strategy = "structured"
+            model_id = _resolve_model_id(os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "") or "mistral.magistral-small-2509")
+            yield f"data: {_json.dumps({'status': f'Strategy: structured extract+generate ({model_id})'})}\n\n"
+        await asyncio.sleep(0)
+
+        if not model_id:
+            yield f"data: {_json.dumps({'error': 'No generation model configured'})}\n\n"
+            return
+
+        system_prompt = (
+            "You are a document analyst and writer. You create professional documents "
+            "based on source material provided by the user. "
+            "CRITICAL RULES: "
+            "(1) Use ONLY information explicitly stated in the provided documents. "
+            "NEVER invent company names, prices, license numbers, phone numbers, or any other facts. "
+            "If information is not in the documents, say 'Not provided in documents' — do NOT fabricate it. "
+            "(2) When ranking or comparing options, prioritize: "
+            "solutions that solve the user's stated problems, "
+            "practical feasibility (proposals executable independently rank higher than those requiring third-party coordination), "
+            "and total value (price + warranty + scope together, not just one factor). "
+            "(3) Do not penalize a proposal for missing details if it addresses the core problem better than alternatives. "
+            "Output well-structured Markdown. Include EVERY company, price, and entity found in the source data — never omit any."
+        )
+
+        try:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            client = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"), config=BotoConfig(read_timeout=300, connect_timeout=10))
+            loop = asyncio.get_event_loop()
+
+            # Multi-cycle rolling context: split docs into batches that fit ~80k chars each
+            # Each cycle builds on the previous result
+            MAX_BATCH_CHARS = 80000
+            markdown_content = ""
+
+            if history:
+                # Refinement: no multi-cycle needed, just send the refinement
+                messages = []
+                for msg in history:
+                    messages.append({"role": msg["role"], "content": [{"text": msg["content"]}]})
+                messages.append({"role": "user", "content": [{"text": prompt}]})
+
+                yield f"data: {_json.dumps({'status': 'Refining...'})}\n\n"
+                await asyncio.sleep(0)
+
+                def _stream_refine():
+                    text, _ = _call_bedrock_stream(client, model_id, [{"text": system_prompt}], messages)
+                    return text
+
+                future = loop.run_in_executor(None, _stream_refine)
+                while not future.done():
+                    done, _ = await asyncio.wait({future}, timeout=8)
+                    if not done:
+                        yield ": keepalive\n\n"
+                markdown_content = future.result()
+
+            elif strategy == "single":
+                # Single pass: everything fits in model's context window
+                context = "\n\n---\n\n".join(all_context)
+                yield f"data: {_json.dumps({'status': f'Generating document (single pass, {len(context)//1000}k chars)...'})}\n\n"
+                await asyncio.sleep(0)
+
+                def _stream_single():
+                    text, _ = _call_bedrock_stream(client, model_id, [{"text": system_prompt}],
+                        [{"role": "user", "content": [{"text": f"Source documents:\n{context}\n\n---\n\nTask: {prompt}"}]}])
+                    return text
+
+                future = loop.run_in_executor(None, _stream_single)
+                while not future.done():
+                    done, _ = await asyncio.wait({future}, timeout=8)
+                    if not done:
+                        yield ": keepalive\n\n"
+                markdown_content = future.result()
+
+            else:
+                # Structured pipeline: schema → extract → merge → generate
+                from .task_pipeline import generate_schema, extract_from_document, merge_extractions, generate_document
+
+                # Step 1: Generate extraction schema from prompt
+                yield f"data: {_json.dumps({'status': 'Step 1/4: Generating extraction schema from prompt...'})}\n\n"
+                await asyncio.sleep(0)
+
+                def _gen_schema():
+                    return generate_schema(client, model_id, prompt)
+                future = loop.run_in_executor(None, _gen_schema)
+                while not future.done():
+                    done, _ = await asyncio.wait({future}, timeout=8)
+                    if not done:
+                        yield ": keepalive\n\n"
+                schema = future.result()
+
+                if "_error" in schema:
+                    err_msg = schema.get("_error", "unknown")
+                    yield f"data: {_json.dumps({'error': f'Schema generation failed: {err_msg}'})}\n\n"
+                    return
+
+                yield f"data: {_json.dumps({'status': f'Schema ready: {len(schema)} categories'})}\n\n"
+                await asyncio.sleep(0)
+
+                # Step 2: Extract from each document using schema
+                extractions = []
+                for i, doc_text in enumerate(all_context):
+                    yield f"data: {_json.dumps({'status': f'Step 2/4: Extracting from document {i+1}/{len(all_context)}...'})}\n\n"
+                    await asyncio.sleep(0)
+
+                    def _extract(dt=doc_text):
+                        return extract_from_document(client, model_id, schema, dt)
+                    future = loop.run_in_executor(None, _extract)
+                    while not future.done():
+                        done, _ = await asyncio.wait({future}, timeout=8)
+                        if not done:
+                            yield ": keepalive\n\n"
+                    result = future.result()
+                    if result:
+                        extractions.append(result)
+
+                # Step 3: Merge (pure code, instant)
+                yield f"data: {_json.dumps({'status': f'Step 3/4: Merging {len(extractions)} extractions...'})}\n\n"
+                await asyncio.sleep(0)
+                merged = merge_extractions(extractions)
+
+                # Step 4: Generate final document from structured data
+                yield f"data: {_json.dumps({'status': 'Step 4/4: Generating final document from structured data...'})}\n\n"
+                await asyncio.sleep(0)
+
+                def _generate():
+                    return generate_document(client, model_id, system_prompt, merged, prompt)
+                future = loop.run_in_executor(None, _generate)
+                while not future.done():
+                    done, _ = await asyncio.wait({future}, timeout=8)
+                    if not done:
+                        yield ": keepalive\n\n"
+                markdown_content = future.result()
+
+            # Track usage (approximate - multi-cycle doesn't return per-call usage easily)
+            if os.getenv("TRACK_USAGE", "true").lower() == "true":
+                from .pricing import estimate_cost
+                approx_input = total_context_chars // 4  # rough token estimate
+                approx_output = len(markdown_content) // 4
+                store.log_usage(
+                    model_id=model_id,
+                    operation="task_generate",
+                    input_tokens=approx_input,
+                    output_tokens=approx_output,
+                    estimated_cost_usd=estimate_cost(model_id, approx_input, approx_output, os.getenv("AWS_REGION", "us-east-1")),
+                )
+
+            # Build updated history (store summary for refinement, not full context)
+            new_history = list(history)
+            if not history:
+                new_history.append({"role": "user", "content": f"Task: {prompt}"})
+            else:
+                new_history.append({"role": "user", "content": prompt})
+            new_history.append({"role": "assistant", "content": markdown_content})
+
+            yield f"data: {_json.dumps({'status': 'Done'})}\n\n"
+            yield f"data: {_json.dumps({'result': {'markdown': markdown_content, 'history': new_history, 'format': fmt}})}\n\n"
+
+        except Exception as e:
+            yield f"data: {_json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/generate/detect-format")
 def generate_detect_format(body: dict):
     """Use a cheap LLM call to detect the best output format for a prompt."""
@@ -603,6 +1037,18 @@ def generate_detect_format(body: dict):
         return {"format": fmt, "reason": reason}
     except Exception:
         return {"format": "md", "reason": "detection unavailable"}
+
+
+@app.get("/generate/plantuml-status")
+def plantuml_status():
+    """Check if PlantUML rendering is available."""
+    from .plantuml import find_plantuml_jar, is_available
+
+    jar = find_plantuml_jar()
+    return {
+        "available": is_available(),
+        "jar_path": str(jar) if jar else None,
+    }
 
 
 @app.post("/generate/convert")
@@ -1396,12 +1842,18 @@ def admin_get_config():
     qa_model = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", qa_model)
+    task_model = os.getenv("BEDROCK_TASK_MODEL_ID", "amazon.nova-pro-v1:0")
+    task_single = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "amazon.nova-pro-v1:0")
+    task_multi = os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "meta.llama3-3-70b-instruct-v1:0")
     detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", qa_model)
     template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", qa_model)
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
         "BEDROCK_GENERATE_MODEL_ID": gen_model,
+        "BEDROCK_TASK_MODEL_ID": task_model,
+        "BEDROCK_TASK_SINGLE_MODEL_ID": task_single,
+        "BEDROCK_TASK_MULTI_MODEL_ID": task_multi,
         "BEDROCK_DETECT_MODEL_ID": detect_model,
         "BEDROCK_TEMPLATE_MODEL_ID": template_model,
         "BEDROCK_VISION_MODEL_ID": vision_model,
@@ -1425,6 +1877,9 @@ def admin_update_config(updates: dict):
         "AWS_REGION",
         "BEDROCK_MODEL_ID",
         "BEDROCK_GENERATE_MODEL_ID",
+        "BEDROCK_TASK_MODEL_ID",
+        "BEDROCK_TASK_SINGLE_MODEL_ID",
+        "BEDROCK_TASK_MULTI_MODEL_ID",
         "BEDROCK_DETECT_MODEL_ID",
         "BEDROCK_TEMPLATE_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",

@@ -1,0 +1,92 @@
+[
+  {
+    "model": "amazon.nova-lite-v1:0",
+    "duration": 3.9,
+    "slides": 7,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 7,
+    "pptx_kb": 64,
+    "score": 100
+  },
+  {
+    "model": "amazon.nova-micro-v1:0",
+    "duration": 2.9,
+    "slides": 6,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 5,
+    "pptx_kb": 57,
+    "score": 95
+  },
+  {
+    "model": "mistral.mistral-large-3-675b-instruct",
+    "duration": 5.8,
+    "slides": 7,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 7,
+    "pptx_kb": 74,
+    "score": 95
+  },
+  {
+    "model": "qwen.qwen3-32b-v1:0",
+    "duration": 6.1,
+    "slides": 8,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 8,
+    "pptx_kb": 69,
+    "score": 95
+  },
+  {
+    "model": "amazon.nova-pro-v1:0",
+    "duration": 8.2,
+    "slides": 7,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 7,
+    "pptx_kb": 62,
+    "score": 95
+  },
+  {
+    "model": "nvidia.nemotron-super-3-120b",
+    "duration": 7.7,
+    "slides": 7,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 6,
+    "pptx_kb": 80,
+    "score": 90
+  },
+  {
+    "model": "mistral.mistral-large-2402-v1:0",
+    "duration": 13.0,
+    "slides": 6,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 6,
+    "pptx_kb": 61,
+    "score": 90
+  },
+  {
+    "model": "deepseek.v3.2",
+    "duration": 22.7,
+    "slides": 7,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 7,
+    "pptx_kb": 77,
+    "score": 85
+  },
+  {
+    "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+    "duration": 16.7,
+    "slides": 5,
+    "diagrams": 1,
+    "rendered": 1,
+    "notes": 4,
+    "pptx_kb": 57,
+    "score": 84
+  }
+]
