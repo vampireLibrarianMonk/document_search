@@ -49,6 +49,16 @@ make build       # Rebuild images without starting
 4. Pick output format (Markdown, Word, PDF, Image, PowerPoint)
 5. Click Generate, then Preview or Download
 
+## Gap-to-Email
+
+1. Switch to "📧 Gap-to-Email" tab
+2. Select a form document (e.g., an HOA application)
+3. Optionally add context documents (e.g., architectural standards)
+4. Add vendors with their name, contact, and relevant documents
+5. Optionally paste an example email to match tone
+6. Click "Analyze Gaps & Generate Emails"
+7. Copy the generated emails and send to each vendor
+
 ## Managing Documents
 
 - Click 👁 to view extracted text

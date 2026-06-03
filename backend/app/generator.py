@@ -121,7 +121,7 @@ def generate_markdown(prompt: str, context: str, manual_mode: bool = False, fmt:
     """Ask Bedrock to generate a markdown document from context and prompt."""
     import boto3
 
-    model_id = os.getenv("BEDROCK_GENERATE_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "")
+    model_id = os.getenv("BEDROCK_GENERATE_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "") or "amazon.nova-pro-v1:0"
     if not model_id:
         raise ValueError("No Ask AI model configured. Set it in Settings.")
 

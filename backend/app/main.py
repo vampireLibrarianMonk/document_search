@@ -19,12 +19,15 @@ from .schemas import (
     ChunkListResponse,
     ConfluenceSyncRequest,
     DocumentResponse,
+    GapEmailRequest,
+    GapEmailResponse,
+    GapEmailResult,
     JobResponse,
     SearchRequest,
     SearchResponse,
     UploadResponse,
 )
-from .services import ingest_file_to_store, run_ask, run_search
+from .services import ingest_file_to_store, run_ask, run_search, _get_bedrock
 
 
 @asynccontextmanager
@@ -546,6 +549,139 @@ def generate_document(body: dict):
     return {"markdown": markdown_content, "format": effective_fmt}
 
 
+# -- Gap-to-Email Pipeline --
+
+
+@app.post("/gap-to-email", response_model=GapEmailResponse)
+def gap_to_email(payload: GapEmailRequest):
+    """Analyze a form's requirements against vendor documents and generate follow-up emails."""
+
+    # 1. Get the form content to understand requirements
+    form_doc = store.get_document(payload.form_document_id)
+    if not form_doc:
+        raise HTTPException(status_code=404, detail="Form document not found")
+    form_chunks = store.get_chunks(payload.form_document_id)
+    form_text = "\n".join(c.content for c in form_chunks)
+
+    # 2. Get additional context (e.g., ARB standards)
+    context_text = ""
+    for ctx_id in payload.context_document_ids:
+        ctx_chunks = store.get_chunks(ctx_id)
+        if ctx_chunks:
+            context_text += "\n".join(c.content for c in ctx_chunks) + "\n"
+
+    # 3. Process each vendor
+    client = _get_bedrock()
+    model_id = os.getenv("BEDROCK_GENERATE_MODEL_ID", "amazon.nova-pro-v1:0")
+
+    results = []
+    for vendor in sorted(payload.vendor_groups, key=lambda v: v.get("name", "")):
+        name = vendor.get("name", "Unknown")
+        contact = vendor.get("contact", "")
+        doc_ids = vendor.get("doc_ids", [])
+        already_have = vendor.get("already_have", [])
+        notes = vendor.get("notes", "")
+
+        # Gather vendor document content
+        vendor_content = ""
+        for doc_id in doc_ids:
+            chunks = store.get_chunks(doc_id)
+            if chunks:
+                doc = store.get_document(doc_id)
+                title = doc.title if doc else doc_id
+                vendor_content += f"[{title}]\n" + "\n".join(c.content for c in chunks) + "\n\n"
+
+        # Build the prompt for gap analysis + email generation
+        example_section = ""
+        if payload.example_email:
+            example_section = f"\nEXAMPLE EMAIL (match this tone and structure):\n{payload.example_email}\n"
+
+        already_have_text = "\n".join(f"  - {item}" for item in already_have) if already_have else "  (nothing specified)"
+
+        prompt = f"""You are helping a homeowner prepare follow-up emails to contractors.
+
+TASK: Analyze what a form/application requires, compare against what this vendor has already provided,
+identify the gaps, and write a follow-up email requesting the missing items.
+
+FORM/APPLICATION REQUIREMENTS:
+{form_text[:4000]}
+
+ADDITIONAL STANDARDS/CONTEXT:
+{context_text[:3000]}
+
+VENDOR: {name}
+CONTACT: {contact}
+NOTES: {notes}
+
+WHAT WE ALREADY HAVE FROM THIS VENDOR:
+{already_have_text}
+
+VENDOR'S DOCUMENTS (excerpts):
+{vendor_content[:6000]}
+{example_section}
+INSTRUCTIONS:
+1. First, identify what the form requires for submission
+2. Compare against what this vendor has already provided (from their documents above)
+3. List the specific GAPS (items still needed)
+4. Write a follow-up email that:
+   - Sounds like a continuation of an existing relationship (not a cold intro)
+   - Opens with: "I've been combing through my documents to make sure I have my p's and q's together in preparation for HOA approval"
+   - Acknowledges what they already provided
+   - Only asks for what's actually missing
+   - Mentions the homeowner will handle neighbor signatures
+   - Is friendly, direct, and concise
+   - Signed by Patrick Flanigan, 12133 Tribune Street, Fairfax, VA 22033
+
+OUTPUT FORMAT (respond with EXACTLY this structure):
+GAPS:
+- gap 1
+- gap 2
+- ...
+
+EMAIL:
+Subject: ...
+(full email text)"""
+
+        system = [{"text": "You produce gap analyses and professional follow-up emails for homeowners."}]
+        messages = [{"role": "user", "content": [{"text": prompt}]}]
+
+        resolved = model_id
+        try:
+            resp = client.converse(
+                modelId=resolved, system=system, messages=messages,
+                inferenceConfig={"maxTokens": 2000},
+            )
+        except BaseException:
+            if not resolved.startswith("us."):
+                resolved = f"us.{model_id}"
+                resp = client.converse(
+                    modelId=resolved, system=system, messages=messages,
+                    inferenceConfig={"maxTokens": 2000},
+                )
+            else:
+                raise
+
+        output = resp["output"]["message"]["content"][0]["text"]
+
+        # Parse gaps and email from output
+        gaps = []
+        email = output
+        if "GAPS:" in output and "EMAIL:" in output:
+            parts = output.split("EMAIL:", 1)
+            gaps_section = parts[0].split("GAPS:", 1)[1].strip()
+            gaps = [line.strip().lstrip("- ") for line in gaps_section.split("\n") if line.strip().startswith("-")]
+            email = parts[1].strip()
+
+        results.append(GapEmailResult(
+            vendor_name=name,
+            contact=contact,
+            gaps=gaps,
+            email=email,
+        ))
+
+    return GapEmailResponse(results=results)
+
+
 # ---------------------------------------------------------------------------
 # Tasks: iterative document generation with conversation history
 # ---------------------------------------------------------------------------
@@ -991,7 +1127,7 @@ def generate_detect_format(body: dict):
 
     model_id = os.getenv(
         "BEDROCK_DETECT_MODEL_ID",
-        os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"),
+        os.getenv("BEDROCK_MODEL_ID", "meta.llama3-8b-instruct-v1:0"),
     )
 
     client = boto3.client(
@@ -1423,7 +1559,10 @@ def admin_jobs() -> list[JobResponse]:
 
 @app.post("/admin/reindex")
 def admin_reindex():
-    """Rebuild the OpenSearch index from Postgres."""
+    """Rebuild the OpenSearch index from Postgres (recreates index for mapping changes)."""
+    client = os_search.get_client()
+    if client.indices.exists(index=os_search.INDEX_NAME):
+        client.indices.delete(index=os_search.INDEX_NAME)
     os_search.ensure_index()
     docs = store.list_documents()
     indexed = 0
@@ -1666,9 +1805,62 @@ def admin_list_models():
 
         qa_models = _dedup(sorted(qa_models, key=lambda x: x["label"]))
         vision_models = _dedup(sorted(vision_models, key=lambda x: x["label"]))
-        return {"qa": qa_models, "vision": vision_models}
+
+        # Embedding models (ranked by benchmark results)
+        _embed_rankings = {
+            "amazon.titan-embed-text-v2:0": "★ 93.3% acc · $0.00002/1K · 1024d · fastest value",
+            "cohere.embed-multilingual-v3": "93.3% acc · $0.0001/1K · 1024d",
+            "cohere.embed-v4:0": "93.3% acc · $0.0001/1K · 1536d · newest",
+            "cohere.embed-english-v3": "93.3% acc · $0.0001/1K · 1024d",
+            "amazon.titan-embed-g1-text-02": "86.7% acc · $0.0001/1K · 1536d",
+            "amazon.titan-embed-text-v1": "86.7% acc · $0.0001/1K · 1536d",
+            "amazon.titan-embed-image-v1": "80.0% acc · $0.0001/1K · 1024d · multimodal",
+            "amazon.nova-2-multimodal-embeddings-v1:0": "multimodal · up to 3072d · unique schema",
+        }
+        embed_models = []
+        seen_embed: set = set()
+        for m in models:
+            mid = m["modelId"]
+            mods_out = set(m.get("outputModalities", []))
+            status = m.get("modelLifecycle", {}).get("status", "")
+            if status not in ("ACTIVE", "LEGACY"):
+                continue
+            if "EMBEDDING" not in mods_out:
+                continue
+            if "TEXT" not in set(m.get("inputModalities", [])):
+                continue
+            # Use the base model ID (strip size variants like :8k, :512)
+            base_id = mid
+            for suffix in (":8k", ":512", ":2:8k", ":0:8k", ":0:512"):
+                if mid.endswith(suffix):
+                    base_id = mid[: -len(suffix)]
+                    break
+            # Deduplicate by model family (e.g. "cohere.embed-english-v3" covers both bare and :0)
+            family = base_id.rstrip(":0").rstrip(":")  # normalize trailing :0
+            if family in seen_embed:
+                continue
+            seen_embed.add(family)
+            # Prefer the :0 versioned ID for consistency
+            if not base_id.endswith(":0") and ":" not in base_id.split(".")[-1]:
+                # Check if a :0 version exists in rankings
+                if base_id + ":0" in _embed_rankings:
+                    base_id = base_id + ":0"
+            provider = m.get("providerName", "")
+            # Look up ranking tag
+            tag = ""
+            for key, val in _embed_rankings.items():
+                if key in base_id or base_id.startswith(key.split(":")[0]):
+                    tag = val
+                    break
+            label = f"{provider} / {base_id}"
+            if tag:
+                label += f"  [{tag}]"
+            embed_models.append({"id": base_id, "label": label})
+        embed_models.sort(key=lambda x: ("★" not in x["label"], x["label"]))
+
+        return {"qa": qa_models, "vision": vision_models, "embedding": embed_models}
     except Exception as e:
-        return {"qa": [], "vision": [], "error": str(e)}
+        return {"qa": [], "vision": [], "embedding": [], "error": str(e)}
 
 
 def _model_tags(model_id: str, provider: str) -> str:
@@ -1839,14 +2031,15 @@ def admin_k8s_health():
 @app.get("/admin/config")
 def admin_get_config():
     """Return current configuration (secrets are masked)."""
-    qa_model = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
-    vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
-    gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", qa_model)
+    qa_model = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-32b-v1:0")
+    vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "mistral.ministral-3-3b-instruct")
+    gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", "amazon.nova-pro-v1:0")
     task_model = os.getenv("BEDROCK_TASK_MODEL_ID", "amazon.nova-pro-v1:0")
     task_single = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "amazon.nova-pro-v1:0")
     task_multi = os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "meta.llama3-3-70b-instruct-v1:0")
-    detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", qa_model)
-    template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", qa_model)
+    detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
+    template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", "mistral.magistral-small-2509")
+    embed_model = os.getenv("BEDROCK_EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
@@ -1857,6 +2050,7 @@ def admin_get_config():
         "BEDROCK_DETECT_MODEL_ID": detect_model,
         "BEDROCK_TEMPLATE_MODEL_ID": template_model,
         "BEDROCK_VISION_MODEL_ID": vision_model,
+        "BEDROCK_EMBED_MODEL_ID": embed_model,
         "OPENSEARCH_HOST": os.getenv("OPENSEARCH_HOST", "localhost"),
         "OPENSEARCH_PORT": os.getenv("OPENSEARCH_PORT", "9200"),
         "BOOKSTACK_URL": os.getenv("BOOKSTACK_URL", ""),
@@ -1883,6 +2077,7 @@ def admin_update_config(updates: dict):
         "BEDROCK_DETECT_MODEL_ID",
         "BEDROCK_TEMPLATE_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",
+        "BEDROCK_EMBED_MODEL_ID",
         "BOOKSTACK_URL",
         "BOOKSTACK_TOKEN_ID",
         "BOOKSTACK_TOKEN_SECRET",
@@ -1901,4 +2096,7 @@ def admin_update_config(updates: dict):
     global _bookstack, _confluence
     _bookstack = BookStackClient()
     _confluence = ConfluenceClient()
+    # Reset embedding client so model change takes effect
+    from . import search as _search_mod
+    _search_mod._bedrock_runtime = None
     return {"applied": applied}

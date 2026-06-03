@@ -1,0 +1,71 @@
+@startuml exterior_mod_workflow
+!theme plain
+title Exterior Modification Application - Roof Replacement Workflow
+
+|Homeowner|
+start
+:Gather roofer proposals\n(4 companies, 9 estimates);
+
+|App - Document Search|
+:Search indexed documents;
+:Retrieve form requirements\n(doc_38cebc657b28);
+:Retrieve ARB Standards\n(doc_26da506329b6);
+:Cross-reference materials\nvs ARB-approved specs;
+
+|Bedrock AI|
+:Analyze each estimate\nfor ARB compliance;
+:Identify gaps in\nsubmission requirements;
+:Generate per-option\nwriteups for form;
+
+|Homeowner|
+:Review compliance report;
+
+if (Materials comply with ARB specs?) then (yes)
+  :Proceed with submission;
+else (no)
+  :Contact contractor to\nrequest ARB-compliant materials;
+  note right
+    ARB requires:
+    * 60 mil EPDM, Black
+    * Aluminum flashing, Medium Bronze
+    * Parapet caps: Sandstone/Military Blue
+  end note
+endif
+
+:Gather missing items;
+note right
+  Common gaps:
+  * Plat plan with roof marked
+  * Photos of current roof
+  * Neighbor signatures
+  * Start/completion dates
+  * Miss Utility call
+end note
+
+:Complete application form;
+:Submit to National Realty Partners\n(Theoharis Management);
+
+|ARB|
+:Review (up to 60 days);
+
+if (Approved?) then (yes)
+  :Begin work within 6 months;
+  :Complete within 12 months;
+  :Request final inspection;
+  :Receive Certificate of Compliance;
+else (no)
+  :Address feedback;
+  :Resubmit;
+endif
+
+stop
+
+legend right
+  |= Roofer |= Best Option |= ARB Compliant? |
+  | All Day Roofing | EPDM 75mil | Partial (needs Black confirmation) |
+  | American Home | Repairs only | N/A (minor repair) |
+  | Brax Roofing | TPO + parapet walls | **CONFLICTS** (TPO ≠ EPDM) |
+  | Virginia Roofing | EPDM recovery | **BEST MATCH** (60mil EPDM Black) |
+endlegend
+
+@enduml

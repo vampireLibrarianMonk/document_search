@@ -40,7 +40,9 @@ partition "Per-Page Extraction" {
 
 :Store in Postgres\n(metadata + chunks);
 
-:Index in OpenSearch\n(BM25 full-text);
+:Generate embeddings via\nBedrock Titan Embeddings\n(per chunk, ~$0.0001/chunk);
+
+:Index in OpenSearch\n(BM25 full-text + kNN vector);
 
 :Push to BookStack\n(organized by category);
 

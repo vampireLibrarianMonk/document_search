@@ -116,3 +116,29 @@ class ConfluenceSyncRequest(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: str
+
+
+# -- Gap-to-Email --
+
+
+class GapEmailRequest(BaseModel):
+    form_document_id: str = Field(description="Document ID of the form/application defining requirements")
+    vendor_groups: list[dict] = Field(
+        description="List of vendor objects: {name, contact, doc_ids, already_have (optional list), notes (optional)}"
+    )
+    context_document_ids: list[str] = Field(
+        default_factory=list,
+        description="Additional context docs (e.g., ARB standards, guidelines)",
+    )
+    example_email: str = Field(default="", description="Optional example email to match tone/structure")
+
+
+class GapEmailResult(BaseModel):
+    vendor_name: str
+    contact: str
+    gaps: list[str]
+    email: str
+
+
+class GapEmailResponse(BaseModel):
+    results: list[GapEmailResult]

@@ -65,7 +65,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -86,6 +86,7 @@ const state = reactive({
   configEdits: {} as Record<string, string>,
   qaModels: [] as Array<{ id: string; label: string }>,
   visionModels: [] as Array<{ id: string; label: string }>,
+  embeddingModels: [] as Array<{ id: string; label: string }>,
   modelWarnings: [] as string[],
   usageOpen: false,
   usageData: null as any,
@@ -127,6 +128,19 @@ const state = reactive({
   taskResult: "",
   taskLoading: false,
   taskRefinement: "",
+
+  // Gap-to-Email
+  gapFormDocId: "" as string,
+  gapContextDocIds: [] as string[],
+  gapVendors: [] as Array<{ name: string; contact: string; doc_ids: string[]; notes: string }>,
+  gapExampleEmail: "",
+  gapLoading: false,
+  gapResults: [] as Array<{ vendor_name: string; contact: string; gaps: string[]; email: string }>,
+  gapError: "",
+  gapNewVendorName: "",
+  gapNewVendorContact: "",
+  gapNewVendorDocs: [] as string[],
+  gapNewVendorNotes: "",
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -563,6 +577,7 @@ async function loadConfig() {
     const models = await modelsResp.json();
     state.qaModels = models.qa || [];
     state.visionModels = models.vision || [];
+    state.embeddingModels = models.embedding || [];
     checkModelWarnings();
   } catch {
     /* ignore */
@@ -912,6 +927,10 @@ createApp({
                 class: `btn btn-sm btn-outline ${state.mode === "diagnostic" ? "active" : ""}`,
                 onClick: () => { state.mode = "diagnostic"; loadTemplates(); },
               }, "🔬 Diagnostic"),
+              h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "gap-email" ? "active" : ""}`,
+                onClick: () => { state.mode = "gap-email"; },
+              }, "📧 Gap-to-Email"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "settings" ? "active" : ""}`,
                 onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); loadK8sHealth(); },
@@ -1275,6 +1294,168 @@ createApp({
                 ])
               : null,
 
+            // Gap-to-Email panel
+            state.mode === "gap-email"
+              ? h("div", { class: "create-panel" }, [
+                  h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 12px 0" }, "Gap-to-Email Pipeline"),
+                  h("p", { style: "color:#9ca3af;font-size:.8rem;margin-bottom:16px" }, "Select a form, add vendors with their documents, and generate follow-up emails for missing items."),
+
+                  // Form document selector
+                  h("div", { style: "margin-bottom:12px" }, [
+                    h("label", { style: "font-size:.75rem;color:#9ca3af;display:block;margin-bottom:4px" }, "Form/Application Document"),
+                    h("select", {
+                      style: "width:100%;padding:6px 8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.8rem",
+                      value: state.gapFormDocId,
+                      onChange: (e: Event) => { state.gapFormDocId = (e.target as HTMLSelectElement).value; },
+                    }, [
+                      h("option", { value: "" }, "-- Select form document --"),
+                      ...state.documents.map((d: any) => h("option", { value: d.document_id }, d.title || d.original_filename)),
+                    ]),
+                  ]),
+
+                  // Context documents (multi-select)
+                  h("div", { style: "margin-bottom:12px" }, [
+                    h("label", { style: "font-size:.75rem;color:#9ca3af;display:block;margin-bottom:4px" }, "Context Documents (standards, guidelines)"),
+                    h("select", {
+                      style: "width:100%;padding:6px 8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.8rem;height:80px",
+                      multiple: true,
+                      onChange: (e: Event) => {
+                        const sel = e.target as HTMLSelectElement;
+                        state.gapContextDocIds = Array.from(sel.selectedOptions).map(o => o.value);
+                      },
+                    }, state.documents.map((d: any) => h("option", { value: d.document_id, selected: state.gapContextDocIds.includes(d.document_id) }, d.title || d.original_filename))),
+                  ]),
+
+                  // Vendors list
+                  h("div", { style: "margin-bottom:12px;border:1px solid #374151;border-radius:8px;padding:12px" }, [
+                    h("label", { style: "font-size:.75rem;color:#9ca3af;display:block;margin-bottom:8px" }, `Vendors (${state.gapVendors.length})`),
+                    ...state.gapVendors.map((v: any, idx: number) =>
+                      h("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px;background:#1f2937;border-radius:4px;font-size:.8rem" }, [
+                        h("span", { style: "flex:1;color:#f3f4f6" }, `${v.name} (${v.doc_ids.length} docs)`),
+                        h("button", {
+                          class: "btn btn-sm",
+                          style: "color:#ef4444;border:none;padding:2px 6px",
+                          onClick: () => { state.gapVendors.splice(idx, 1); },
+                        }, "×"),
+                      ])
+                    ),
+
+                    // Add vendor form
+                    h("div", { style: "margin-top:8px;padding-top:8px;border-top:1px solid #374151" }, [
+                      h("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px" }, [
+                        h("input", {
+                          style: "padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem",
+                          placeholder: "Vendor name",
+                          value: state.gapNewVendorName,
+                          onInput: (e: Event) => { state.gapNewVendorName = (e.target as HTMLInputElement).value; },
+                        }),
+                        h("input", {
+                          style: "padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem",
+                          placeholder: "Contact (email/phone)",
+                          value: state.gapNewVendorContact,
+                          onInput: (e: Event) => { state.gapNewVendorContact = (e.target as HTMLInputElement).value; },
+                        }),
+                      ]),
+                      h("select", {
+                        style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem;height:60px;margin-bottom:6px",
+                        multiple: true,
+                        onChange: (e: Event) => {
+                          state.gapNewVendorDocs = Array.from((e.target as HTMLSelectElement).selectedOptions).map(o => o.value);
+                        },
+                      }, state.documents.map((d: any) => h("option", { value: d.document_id }, d.title || d.original_filename))),
+                      h("input", {
+                        style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem;margin-bottom:6px",
+                        placeholder: "Notes (optional - e.g., 'offered to help with HOA docs')",
+                        value: state.gapNewVendorNotes,
+                        onInput: (e: Event) => { state.gapNewVendorNotes = (e.target as HTMLInputElement).value; },
+                      }),
+                      h("button", {
+                        class: "btn btn-sm btn-outline",
+                        onClick: () => {
+                          if (state.gapNewVendorName && state.gapNewVendorDocs.length) {
+                            state.gapVendors.push({
+                              name: state.gapNewVendorName,
+                              contact: state.gapNewVendorContact,
+                              doc_ids: [...state.gapNewVendorDocs],
+                              notes: state.gapNewVendorNotes,
+                            });
+                            state.gapNewVendorName = "";
+                            state.gapNewVendorContact = "";
+                            state.gapNewVendorDocs = [];
+                            state.gapNewVendorNotes = "";
+                          }
+                        },
+                      }, "+ Add Vendor"),
+                    ]),
+                  ]),
+
+                  // Example email (optional)
+                  h("details", { style: "margin-bottom:12px" }, [
+                    h("summary", { style: "font-size:.75rem;color:#9ca3af;cursor:pointer" }, "Example Email (optional - for tone matching)"),
+                    h("textarea", {
+                      style: "width:100%;height:120px;padding:8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.75rem;margin-top:6px;font-family:monospace",
+                      placeholder: "Paste an example email here to match its tone and structure...",
+                      value: state.gapExampleEmail,
+                      onInput: (e: Event) => { state.gapExampleEmail = (e.target as HTMLTextAreaElement).value; },
+                    }),
+                  ]),
+
+                  // Generate button
+                  h("button", {
+                    class: "btn btn-primary",
+                    style: "width:100%;margin-bottom:16px",
+                    disabled: !state.gapFormDocId || state.gapVendors.length === 0 || state.gapLoading,
+                    onClick: async () => {
+                      state.gapLoading = true;
+                      state.gapError = "";
+                      state.gapResults = [];
+                      try {
+                        const res = await fetch(`${apiBase}/gap-to-email`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            form_document_id: state.gapFormDocId,
+                            vendor_groups: state.gapVendors,
+                            context_document_ids: state.gapContextDocIds,
+                            example_email: state.gapExampleEmail,
+                          }),
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        const data = await res.json();
+                        state.gapResults = data.results || [];
+                      } catch (e: any) {
+                        state.gapError = e.message || "Failed to generate emails";
+                      } finally {
+                        state.gapLoading = false;
+                      }
+                    },
+                  }, state.gapLoading ? "Analyzing & Generating..." : "🔍 Analyze Gaps & Generate Emails"),
+
+                  // Error
+                  state.gapError ? h("div", { style: "color:#ef4444;font-size:.8rem;margin-bottom:12px" }, state.gapError) : null,
+
+                  // Results
+                  ...state.gapResults.map((r: any) =>
+                    h("div", { style: "margin-bottom:16px;border:1px solid #374151;border-radius:8px;padding:12px" }, [
+                      h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:8px" }, [
+                        h("h3", { style: "margin:0;font-size:.9rem;color:#f3f4f6" }, r.vendor_name),
+                        h("span", { style: "font-size:.7rem;color:#9ca3af" }, r.contact),
+                      ]),
+                      r.gaps.length ? h("div", { style: "margin-bottom:8px" }, [
+                        h("div", { style: "font-size:.7rem;color:#f59e0b;margin-bottom:4px" }, "Gaps Found:"),
+                        ...r.gaps.map((g: string) => h("div", { style: "font-size:.75rem;color:#fbbf24;padding-left:8px" }, `• ${g}`)),
+                      ]) : null,
+                      h("div", { style: "background:#111827;border-radius:6px;padding:10px;font-size:.75rem;color:#d1d5db;white-space:pre-wrap;font-family:monospace;max-height:400px;overflow-y:auto" }, r.email),
+                      h("button", {
+                        class: "btn btn-sm btn-outline",
+                        style: "margin-top:8px",
+                        onClick: () => { navigator.clipboard.writeText(r.email); },
+                      }, "📋 Copy Email"),
+                    ])
+                  ),
+                ])
+              : null,
+
             // Health panel (k8s pod status)
             // Settings panel
             state.mode === "settings"
@@ -1455,9 +1636,9 @@ createApp({
                         .map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
                         const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID" || key === "BEDROCK_EMBED_MODEL_ID";
                         const isRegionSelect = key === "AWS_REGION";
-                        const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : state.qaModels;
+                        const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : key === "BEDROCK_EMBED_MODEL_ID" ? state.embeddingModels : state.qaModels;
                         // For task model selectors, add context window hints to help user choose
                         const modelList = (key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID")
                           ? models.map((m: any) => {

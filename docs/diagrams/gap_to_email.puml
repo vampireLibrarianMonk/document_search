@@ -1,0 +1,32 @@
+@startuml gap_to_email
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+
+title Gap-to-Email Pipeline
+
+participant "Frontend\n(Gap-to-Email Tab)" as FE
+participant "API\n(/gap-to-email)" as API
+database "PostgreSQL\n+ OpenSearch" as DB
+participant "Amazon\nBedrock" as AI
+
+FE -> API : POST /gap-to-email\n{form_doc_id, vendors[], context_docs[], example_email}
+
+group For each vendor (alphabetical)
+    API -> DB : Get form document chunks
+    API -> DB : Get context document chunks\n(standards, guidelines)
+    API -> DB : Get vendor document chunks
+
+    API -> API : Build prompt:\n• Form requirements\n• Vendor's existing docs\n• ARB standards context\n• Example email (if provided)
+
+    API -> AI : Converse (generate model)\n"Analyze gaps + write email"
+    AI --> API : Gaps[] + Email text
+
+    API -> API : Parse GAPS: and EMAIL:\nsections from response
+end
+
+API --> FE : {results: [{vendor_name,\ncontact, gaps[], email}]}
+
+FE -> FE : Render per-vendor cards:\n• Gap list (amber)\n• Email (monospace)\n• Copy button
+
+@enduml

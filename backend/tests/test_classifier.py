@@ -66,13 +66,20 @@ def test_falls_back_on_error(mock_bedrock, mock_cats):
     assert title == ""
 
 
-@patch.dict("os.environ", {"BEDROCK_MODEL_ID": ""}, clear=False)
-@patch.dict("os.environ", {"BEDROCK_CLASSIFY_MODEL_ID": ""}, clear=False)
-def test_falls_back_when_no_model_configured():
+@patch.dict("os.environ", {"BEDROCK_MODEL_ID": "", "BEDROCK_CLASSIFY_MODEL_ID": ""}, clear=False)
+@patch("app.classifier._get_bedrock")
+def test_uses_default_model_when_env_empty(mock_bedrock):
+    """When env vars are empty, should use hardcoded default (nova-micro) instead of failing."""
+    mock_client = MagicMock()
+    mock_bedrock.return_value = mock_client
+    mock_client.converse.return_value = {
+        "output": {"message": {"content": [{"text": '{"category":"Test","document_type":"test","tags":["t"],"title":"T","effective_date":""}'}]}},
+        "usage": {"inputTokens": 10, "outputTokens": 10},
+    }
     cat, dtype, tags, title, doc_date = classify_document("test.pdf", "some text")
-    assert cat == "Uncategorized"
-    assert dtype == "general"
-    assert title == ""
+    # Should have called Bedrock with the hardcoded default, not returned Uncategorized
+    mock_client.converse.assert_called_once()
+    assert cat == "Test"
 
 
 @patch.dict("os.environ", _TEST_ENV)

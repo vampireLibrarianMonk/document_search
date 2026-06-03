@@ -45,9 +45,9 @@ user --> frontend : HTTP :5173
 frontend --> api : REST API
 
 api --> pg : documents\nchunks\njobs\ntoken_usage
-api --> os : index & search\nchunks (BM25)
+api --> os : index & search\nchunks (hybrid:\nBM25 + kNN)
 api --> disk : save uploads
-api --> bedrock : Ask AI (Q&A)\nVision OCR\nTemplate Fill\nDocument Generation\nFormat Detection
+api --> bedrock : Ask AI (Q&A)\nVision OCR\nTemplate Fill\nDocument Generation\nFormat Detection\nEmbeddings (Titan)
 api --> pricing : fetch model\npricing
 api --> bookstack : sync & push\ndocuments
 api --> confluence : sync\ndocuments
@@ -57,19 +57,21 @@ bookstack --> bsdb
 note right of bedrock
   Uses Converse API
   (model-agnostic)
-  5 model roles:
+  6 model roles:
   - Ask AI (Nova Pro)
   - Generate (Sonnet 3)
   - Template (Nova Pro)
   - Vision (Haiku 3)
   - Detect (Mistral Large)
+  - Embed (Titan v2)
   Tracks token usage
   & estimated cost
 end note
 
 note right of os
-  English analyzer
-  for stemming
-  BM25 full-text search
+  Hybrid search:
+  - English analyzer (BM25)
+  - kNN vector (cosine)
+  - Combined scoring
 end note
 @enduml

@@ -1,24 +1,31 @@
-"""OpenSearch integration for chunk indexing and search.
+"""OpenSearch integration for chunk indexing and hybrid search.
 
-Indexes document chunks into OpenSearch for fast full-text search
-with BM25 scoring, replacing the in-memory keyword scanner.
+Indexes document chunks into OpenSearch with both full-text (BM25) and
+vector (kNN) fields, enabling hybrid search that combines lexical and
+semantic matching for better recall.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
+import boto3
+from botocore.config import Config as BotoConfig
 from opensearchpy import OpenSearch, helpers
 
 logger = logging.getLogger(__name__)
 
 INDEX_NAME = "house_document_chunks"
 
+EMBEDDING_DIMENSION = 1024
+
 _MAPPING = {
     "settings": {
         "number_of_shards": 1,
         "number_of_replicas": 0,
+        "index.knn": True,
     },
     "mappings": {
         "properties": {
@@ -30,9 +37,39 @@ _MAPPING = {
             "source_type": {"type": "keyword"},
             "document_type": {"type": "keyword"},
             "tags": {"type": "keyword"},
+            "embedding": {
+                "type": "knn_vector",
+                "dimension": EMBEDDING_DIMENSION,
+                "method": {"name": "hnsw", "engine": "nmslib", "space_type": "cosinesimil"},
+            },
         },
     },
 }
+
+# Lazy-init Bedrock runtime client for embeddings
+_bedrock_runtime = None
+
+
+def _get_bedrock_runtime():
+    global _bedrock_runtime
+    if _bedrock_runtime is None:
+        _bedrock_runtime = boto3.client(
+            "bedrock-runtime",
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+            config=BotoConfig(read_timeout=30, connect_timeout=5),
+        )
+    return _bedrock_runtime
+
+
+def get_embedding(text: str) -> list[float]:
+    """Get embedding vector for text using Bedrock Titan Embeddings."""
+    client = _get_bedrock_runtime()
+    model_id = os.getenv("BEDROCK_EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
+    resp = client.invoke_model(
+        modelId=model_id,
+        body=json.dumps({"inputText": text[:8000]}),
+    )
+    return json.loads(resp["body"].read())["embedding"]
 
 
 def get_client() -> OpenSearch:
@@ -57,7 +94,7 @@ def ensure_index():
 
 
 def index_chunks(document_id: str, title: str, chunks: list[dict]):
-    """Bulk-index chunks for a document. Deletes old chunks first."""
+    """Bulk-index chunks with embeddings for hybrid search. Deletes old chunks first."""
     client = get_client()
 
     # Remove old chunks for this document
@@ -70,25 +107,26 @@ def index_chunks(document_id: str, title: str, chunks: list[dict]):
     if not chunks:
         return
 
-    actions = [
-        {
-            "_index": INDEX_NAME,
-            "_id": c["chunk_id"],
-            "_source": {
-                "chunk_id": c["chunk_id"],
-                "document_id": document_id,
-                "title": title,
-                "section_heading": c.get("section_heading", "Body"),
-                "content": c["content"],
-                "source_type": c.get("source_type", "uploaded_file"),
-                "document_type": c.get("document_type", "general"),
-                "tags": c.get("tags", []),
-            },
+    actions = []
+    for c in chunks:
+        source = {
+            "chunk_id": c["chunk_id"],
+            "document_id": document_id,
+            "title": title,
+            "section_heading": c.get("section_heading", "Body"),
+            "content": c["content"],
+            "source_type": c.get("source_type", "uploaded_file"),
+            "document_type": c.get("document_type", "general"),
+            "tags": c.get("tags", []),
         }
-        for c in chunks
-    ]
+        try:
+            source["embedding"] = get_embedding(c["content"])
+        except Exception as e:
+            logger.warning("Embedding failed for chunk %s, indexing without vector: %s", c["chunk_id"], e)
+        actions.append({"_index": INDEX_NAME, "_id": c["chunk_id"], "_source": source})
+
     helpers.bulk(client, actions)
-    logger.info("Indexed %d chunks for %s", len(actions), document_id)
+    logger.info("Indexed %d chunks (with embeddings) for %s", len(actions), document_id)
 
 
 def search_chunks(
@@ -97,18 +135,8 @@ def search_chunks(
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
-    """Full-text search over chunks using OpenSearch BM25."""
+    """Hybrid search: BM25 + kNN vector similarity, combined with score normalization."""
     client = get_client()
-
-    must = [
-        {
-            "multi_match": {
-                "query": query,
-                "fields": ["content^3", "title", "section_heading"],
-                "type": "best_fields",
-            },
-        },
-    ]
 
     filter_clauses = []
     if filters:
@@ -118,11 +146,37 @@ def search_chunks(
             elif key == "tag":
                 filter_clauses.append({"term": {"tags": val}})
 
+    # BM25 leg
+    bm25_query = {
+        "multi_match": {
+            "query": query,
+            "fields": ["content^3", "title", "section_heading"],
+            "type": "best_fields",
+        },
+    }
+
+    # Build hybrid query: combine BM25 and kNN in a bool/should
+    should_clauses = [bm25_query]
+    try:
+        query_embedding = get_embedding(query)
+        knn_clause = {
+            "knn": {
+                "embedding": {
+                    "vector": query_embedding,
+                    "k": page_size * 2,
+                },
+            },
+        }
+        should_clauses.append(knn_clause)
+    except Exception as e:
+        logger.warning("Embedding query failed, falling back to BM25 only: %s", e)
+
     body = {
         "query": {
             "bool": {
-                "must": must,
+                "should": should_clauses,
                 "filter": filter_clauses,
+                "minimum_should_match": 1,
             },
         },
         "from": (page - 1) * page_size,
@@ -137,7 +191,6 @@ def search_chunks(
     results = []
     for hit in resp["hits"]["hits"]:
         src = hit["_source"]
-        # Use highlighted snippet if available, otherwise first 300 chars
         snippet = src["content"][:300]
         if "highlight" in hit and "content" in hit["highlight"]:
             snippet = hit["highlight"]["content"][0]

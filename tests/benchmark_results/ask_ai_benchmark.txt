@@ -1,0 +1,345 @@
+ASK AI (Q&A) MODEL BENCHMARK RESULTS
+================================================================================
+Date: 2026-06-02 09:34:31
+Region: us-east-1
+Models tested: 13
+Scenarios: 5
+
+System Prompt:
+  You are a helpful assistant that answers questions about house documents (HOA rules, inspection reports, closing paperwork, insurance, etc). Answer the question using ONLY the provided document excerpts. Give a clear, direct answer in plain English that a non-expert would understand. If the excerpts don't contain enough information to answer, say so honestly.
+
+====================================================================================================
+RANKED RESULTS
+====================================================================================================
+Rank Model                                       Acc  Gnd  Cnc    Lat  Tok In  Tok Out  Score  Err
+──────────────────────────────────────────────────────────────────────────────────────────────────
+1    meta.llama3-70b-instruct-v1:0              17/25  5/5 21/25  1.45s    1573      292   46.6    0
+2    qwen.qwen3-32b-v1:0                        16/25  5/5 21/25  0.58s    1722      309   46.4    0
+3    amazon.nova-lite-v1:0                      13/25  5/5 22/25  0.58s    1620      256   44.4    0
+4    mistral.magistral-small-2509               16/25  5/5 19/25  1.50s    1738      404   43.5    0
+5    amazon.nova-micro-v1:0                     12/25  5/5 21/25  0.46s    1620      254   42.5    0
+6    amazon.nova-pro-v1:0                       13/25  5/5 20/25  0.71s    1620      306   42.3    0
+7    anthropic.claude-3-sonnet-20240229-v1:0    17/25  5/5 17/25  2.02s    1716      546   42.0    0
+8    zai.glm-5                                  13/25  5/5 20/25  1.40s    1552      316   41.6    0
+9    anthropic.claude-3-haiku-20240307-v1:0     17/25  4/5 18/25  1.69s    1716      509   38.3    0
+10   mistral.mistral-large-2402-v1:0            17/25  4/5 19/25  2.81s    1894      414   38.2    0
+11   nvidia.nemotron-super-3-120b               12/25  5/5 20/25  5.40s    1793      323   36.6    0
+12   deepseek.v3.2                              12/25  4/5 21/25 23.66s    1526      256   28.0    0
+13   openai.gpt-oss-120b-1:0                     0/25  0/5  0/25  0.00s       0        0    0.0    5
+
+────────────────────────────────────────────────────────────────────────────────
+Scoring:
+  Acc (Accuracy): 0-25 (5 pts per scenario for correct key facts)
+  Gnd (Groundedness): 0-5 (1 pt per scenario if no hallucination detected)
+  Cnc (Conciseness): 0-25 (5 pts per scenario for focused answers)
+  Lat (Latency): average seconds per call
+  Score = Accuracy + Conciseness + LatencyBonus(10-avgLat) - HallucinationPenalty(5 each) - ErrorPenalty(10 each)
+────────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+DETAILED ANSWERS PER MODEL
+================================================================================
+
+────────────────────────────────────────────────────────────
+amazon.nova-micro-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 3/5 | Grounded: Y | Concise: 5/5 | Latency: 0.54s
+    Answer: Your fence cannot exceed six (6) feet in height as measured from the natural grade on the higher side.
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.35s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: Y | Concise: 5/5 | Latency: 0.32s
+    Answer: You have $525,000 in dwelling coverage. This is shown under Coverage A in your Homeowners Insurance Declarations Page.
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 3/5 | Latency: 0.63s
+    Answer: Your property taxes for the year 2024 are due in two installments. The first half is due on October 1, 2024, and the second half is due on March 1, 2025. If you miss these dates, interest starts accru
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 0.48s
+    Answer: The inspector said that the roof is functional but showing signs of age and will likely need replacement soon. The roof has curling shingles and some granules are missing, especially in certain areas.
+
+────────────────────────────────────────────────────────────
+amazon.nova-lite-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 5/5 | Grounded: Y | Concise: 5/5 | Latency: 0.69s
+    Answer: Your perimeter fence cannot exceed six (6) feet in height, and front yard fences are limited to four (4) feet in height.
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.32s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 2/5 | Grounded: Y | Concise: 5/5 | Latency: 0.27s
+    Answer: You have $525,000 in dwelling coverage.
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 4/5 | Latency: 0.68s
+    Answer: Your taxes for the year 2024 are due in two installments:
+
+1. The first half is due on October 1, 2024.
+2. The second half is due on March 1, 2025.
+
+You can pay online, by mail, or in person. If you c
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 0.94s
+    Answer: The inspector, Mike Torres, noted that the roof is a composition shingle with an estimated age of about 15 years. The roof is in fair condition, showing signs of wear such as curling shingles on the s
+
+────────────────────────────────────────────────────────────
+amazon.nova-pro-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 5/5 | Grounded: Y | Concise: 4/5 | Latency: 0.62s
+    Answer: Your fence can be up to six (6) feet tall, measured from the natural grade on the higher side. However, if it's a front yard fence, it can only be up to four (4) feet tall. Make sure to get approval f
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.39s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 2/5 | Grounded: Y | Concise: 5/5 | Latency: 0.75s
+    Answer: You have $525,000 in dwelling coverage for your home at 1847 Oakwood Drive, Gilbert, AZ 85297.
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 4/5 | Latency: 0.63s
+    Answer: Your taxes are due in two payments:
+- The first half is due on October 1, 2024.
+- The second half is due on March 1, 2025.
+
+If you choose to pay the entire amount at once, it is due by December 31, 20
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 2/5 | Latency: 1.14s
+    Answer: The inspector, Mike Torres, said that the roof is functional but showing signs of wear and is nearing the end of its expected service life. He noted that the shingles are curling, especially on the so
+
+────────────────────────────────────────────────────────────
+anthropic.claude-3-haiku-20240307-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 2.20s
+    Answer: According to the HOA Architectural Guidelines, fences cannot exceed 6 feet in height as measured from the natural grade on the higher side. Front yard fences are limited to a maximum of 4 feet in heig
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.43s
+    Answer: According to the Closing Disclosure, your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: N | Concise: 5/5 | Latency: 0.55s
+    Answer: Based on the information provided in the homeowners insurance declarations page, your dwelling coverage (Coverage A) is $525,000.
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 3/5 | Latency: 1.77s
+    Answer: According to the 2024 Property Tax Statement, your taxes are due in two installments:
+
+First Half: Due October 1, 2024, and delinquent if not paid by November 1, 2024.
+
+Second Half: Due March 1, 2025,
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 1/5 | Latency: 3.50s
+    Answer: Based on the home inspection report excerpts, the inspector made the following key observations about the roof:
+
+- The roof is a composition shingle (architectural style) and is estimated to be approx
+
+────────────────────────────────────────────────────────────
+anthropic.claude-3-sonnet-20240229-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 3/5 | Latency: 1.97s
+    Answer: According to the HOA Architectural Guidelines excerpt provided, the maximum allowed height for fences is 6 feet, measured from the natural grade on the higher side. However, fences in front yards are 
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.65s
+    Answer: According to the Closing Disclosure excerpt provided, your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: Y | Concise: 5/5 | Latency: 0.81s
+    Answer: According to the Coverage Summary on the Homeowners Insurance Declarations Page, you have $525,000 of Coverage A - Dwelling coverage.
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 3/5 | Latency: 2.05s
+    Answer: According to the 2024 Property Tax Statement, your property taxes have the following due dates:
+
+First Half Due: October 1, 2024
+First Half Delinquent After: November 1, 2024
+
+Second Half Due: March 1
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 1/5 | Latency: 4.63s
+    Answer: According to the home inspection report excerpts provided, the inspector made the following key observations about the roof:
+
+- The roof is a composition shingle (architectural style) roof, estimated 
+
+────────────────────────────────────────────────────────────
+mistral.mistral-large-2402-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 1.48s
+    Answer: In your community, perimeter fences are allowed to be up to six feet tall, as measured from the natural grade on the higher side. However, if the fence is in the front yard, it is limited to four feet
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.36s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: N | Concise: 5/5 | Latency: 1.10s
+    Answer: Based on the provided Homeowners Insurance Declarations Page, you have dwelling coverage of $525,000. This is listed under Coverage A - Dwelling in the Coverage Summary section of the document.
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 3/5 | Latency: 2.53s
+    Answer: Your property taxes for the year 2024 are due in two installments. The first half is due on October 1, 2024, and it will become delinquent if not paid by November 1, 2024. The second half is due on Ma
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 2/5 | Latency: 8.60s
+    Answer: The inspector said that the roof is in fair condition but showing age-related wear. The roof is a composition shingle type, approximately 15 years old, and has multiple areas of curling shingles on th
+
+────────────────────────────────────────────────────────────
+mistral.magistral-small-2509
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 3/5 | Latency: 1.11s
+    Answer: Your fence can be up to 6 feet tall on the sides or back of your property. However, if it's in the front yard, the maximum height is 4 feet and must be made of wrought iron or decorative aluminum. Als
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.35s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 2/5 | Grounded: Y | Concise: 5/5 | Latency: 0.89s
+    Answer: You have $525,000 in dwelling coverage for your home at 1847 Oakwood Drive, Gilbert, AZ 85297.
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 1.99s
+    Answer: Based on the provided tax statement, your taxes are due in two halves:
+
+- First half is due on October 1, 2024 (delinquent after November 1, 2024)
+- Second half is due on March 1, 2025 (delinquent aft
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 2/5 | Latency: 3.15s
+    Answer: The inspector, Mike Torres, examined the roof on February 28, 2024. He noted that it is a composition shingle roof, about 15 years old, and in "fair" condition due to its age.
+
+Key points:
+- Some shin
+
+────────────────────────────────────────────────────────────
+meta.llama3-70b-instruct-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 1.54s
+    Answer: 
+
+According to the HOA Architectural Guidelines, the maximum height of your fence depends on its location. 
+
+* For perimeter fences, the maximum height is 6 feet as measured from the natural grade on 
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.63s
+    Answer: 
+
+According to the Closing Disclosure, your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: Y | Concise: 5/5 | Latency: 0.69s
+    Answer: 
+
+According to the Homeowners Insurance Declarations Page, you have $525,000 in dwelling coverage (Coverage A).
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 2.22s
+    Answer: 
+
+According to the 2024 Property Tax Statement, your taxes are due in two installments:
+
+* First half: Due on October 1, 2024, and delinquent after November 1, 2024.
+* Second half: Due on March 1, 202
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 2.16s
+    Answer: 
+
+According to the home inspection report, the inspector said that the roof is in "Fair" condition, showing age-related wear, and is nearing the end of its expected service life. Specifically, the ins
+
+────────────────────────────────────────────────────────────
+qwen.qwen3-32b-v1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 0.69s
+    Answer: The height of your fence depends on where you live on your property:
+
+- In general, perimeter fences and privacy walls cannot be taller than **6 feet**, measured from the higher side's natural ground 
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.37s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 2/5 | Grounded: Y | Concise: 5/5 | Latency: 0.42s
+    Answer: You have $525,000 in dwelling coverage under your homeowners insurance policy.
+  Property Tax Notice:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 0.72s
+    Answer: Your property taxes are due in two installments:
+
+1. **First Half:** Due on **October 1, 2024**, with a delinquent date of **November 1, 2024**.
+2. **Second Half:** Due on **March 1, 2025**, with a de
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 0.69s
+    Answer: The inspector said the roof is in fair condition but is nearing the end of its expected life due to age-related wear. Specifically, he noted curling shingles (especially on the south-facing side), gra
+
+────────────────────────────────────────────────────────────
+deepseek.v3.2
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 32.56s
+    Answer: Based on the excerpts, your fence's maximum height depends on its location. **In the front yard, the fence cannot be taller than 4 feet. For any other perimeter fence, the maximum height is 6 feet.** 
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 1.13s
+    Answer: According to the document, your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 2/5 | Grounded: N | Concise: 5/5 | Latency: 0.42s
+    Answer: Your dwelling coverage is $525,000.
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 4/5 | Latency: 82.15s
+    Answer: Based on the document, your 2024 property taxes have a split-payment schedule:
+
+*   **First Half:** Due by **October 1, 2024**.
+*   **Second Half:** Due by **March 1, 2025**.
+
+If you choose to pay the
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 2.05s
+    Answer: The inspector said the roof is in fair condition but showing its age. It's about 15 years old, has curling shingles on the south side, and some granule loss. While there were no active leaks found, th
+
+────────────────────────────────────────────────────────────
+nvidia.nemotron-super-3-120b
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 5.97s
+    Answer: Fences may not exceed six (6) feet in height as measured from the natural grade on the higher side. Front yard fences are limited to four (4) feet. The height restriction applies to perimeter fences a
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 11.84s
+    Answer: 6.875%
+  Insurance Declarations:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 1.32s
+    Answer: $525,000
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 4/5 | Latency: 7.02s
+    Answer: Your taxes are due in two installments: the first half is due October 1, 2024, and the second half is due March 1, 2025. If you pay in full, the entire amount of $5,412.78 must be paid by December 31,
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 3/5 | Latency: 0.85s
+    Answer: The inspector reported that the roof is 15 years old and shows signs of age-related wear, including curling shingles on the south-facing slope, granule loss in valleys and high-traffic areas, dried an
+
+────────────────────────────────────────────────────────────
+zai.glm-5
+────────────────────────────────────────────────────────────
+  HOA Fence Rules:
+    Accuracy: 4/5 | Grounded: Y | Concise: 4/5 | Latency: 1.71s
+    Answer: It depends on where the fence is located on your property:
+
+*   **Perimeter and Privacy Fences:** These can be up to **6 feet** tall.
+*   **Front Yard Fences:** These are limited to **4 feet** tall.
+
+
+  Closing Disclosure:
+    Accuracy: 1/5 | Grounded: Y | Concise: 5/5 | Latency: 0.62s
+    Answer: Your interest rate is 6.875%.
+  Insurance Declarations:
+    Accuracy: 3/5 | Grounded: Y | Concise: 5/5 | Latency: 0.89s
+    Answer: You have $525,000 in dwelling coverage (Coverage A).
+  Property Tax Notice:
+    Accuracy: 0/5 | Grounded: Y | Concise: 4/5 | Latency: 1.04s
+    Answer: According to the document, you have two options for payment:
+
+**If paying in halves:**
+*   The **first half** is due October 1, 2024.
+*   The **second half** is due March 1, 2025.
+
+**If paying in full
+  Inspection Report:
+    Accuracy: 5/5 | Grounded: Y | Concise: 2/5 | Latency: 2.74s
+    Answer: The inspector found the roof to be in fair condition and functional, but showing signs of age. According to the report:
+
+*   **Age and Condition:** The roof is approximately 15 years old and is nearin
+
+────────────────────────────────────────────────────────────
+openai.gpt-oss-120b-1:0
+────────────────────────────────────────────────────────────
+  HOA Fence Rules: ERROR - 'text'
+  Closing Disclosure: ERROR - 'text'
+  Insurance Declarations: ERROR - 'text'
+  Property Tax Notice: ERROR - 'text'
+  Inspection Report: ERROR - 'text'

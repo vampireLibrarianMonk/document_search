@@ -1,0 +1,113 @@
+================================================================================
+DOCUMENT GENERATION MODEL BENCHMARK
+================================================================================
+Region: us-east-1
+Models tested: 12
+Prompts per model: 3
+
+
+================================================================================
+DETAILED RESULTS PER PROMPT
+================================================================================
+
+--- amazon.nova-micro-v1:0 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.53s | Tokens=306
+  Prompt 2: Struct=5 Acc=3 Comp=5 Instr=5 Total=18/20 | Latency=1.85s | Tokens=454
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=0.79s | Tokens=216
+
+--- amazon.nova-lite-v1:0 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.62s | Tokens=252
+  Prompt 2: Struct=5 Acc=3 Comp=4 Instr=5 Total=17/20 | Latency=2.03s | Tokens=323
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.47s | Tokens=223
+
+--- amazon.nova-pro-v1:0 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=2.47s | Tokens=251
+  Prompt 2: Struct=5 Acc=4 Comp=5 Instr=5 Total=19/20 | Latency=2.68s | Tokens=405
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.41s | Tokens=192
+
+--- anthropic.claude-3-haiku-20240307-v1:0 ---
+  Prompt 1: Struct=5 Acc=4 Comp=5 Instr=5 Total=19/20 | Latency=3.05s | Tokens=201
+  Prompt 2: Struct=5 Acc=2 Comp=3 Instr=5 Total=15/20 | Latency=2.92s | Tokens=266
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.66s | Tokens=182
+
+--- anthropic.claude-3-sonnet-20240229-v1:0 ---
+  Prompt 1: Struct=5 Acc=4 Comp=5 Instr=5 Total=19/20 | Latency=3.56s | Tokens=225
+  Prompt 2: Struct=5 Acc=2 Comp=5 Instr=5 Total=17/20 | Latency=6.35s | Tokens=308
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=3.31s | Tokens=221
+
+--- mistral.mistral-large-2402-v1:0 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=6.33s | Tokens=312
+  Prompt 2: Struct=5 Acc=3 Comp=5 Instr=5 Total=18/20 | Latency=7.30s | Tokens=361
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=7.59s | Tokens=381
+
+--- mistral.magistral-small-2509 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=2.31s | Tokens=251
+  Prompt 2: Struct=4 Acc=2 Comp=4 Instr=5 Total=15/20 | Latency=3.44s | Tokens=388
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.90s | Tokens=202
+
+--- meta.llama3-70b-instruct-v1:0 ---
+  ERRORS: 3/3 prompts failed
+    An error occurred (ValidationException) when calling the Converse operation: The maximum tokens you requested exceeds th
+    An error occurred (ValidationException) when calling the Converse operation: The maximum tokens you requested exceeds th
+    An error occurred (ValidationException) when calling the Converse operation: The maximum tokens you requested exceeds th
+  Prompt 1: Struct=0 Acc=0 Comp=0 Instr=0 Total=0/20 | Latency=0.00s | Tokens=0
+  Prompt 2: Struct=0 Acc=0 Comp=0 Instr=0 Total=0/20 | Latency=0.00s | Tokens=0
+  Prompt 3: Struct=0 Acc=0 Comp=0 Instr=0 Total=0/20 | Latency=0.00s | Tokens=0
+
+--- qwen.qwen3-32b-v1:0 ---
+  Prompt 1: Struct=5 Acc=4 Comp=5 Instr=5 Total=19/20 | Latency=2.67s | Tokens=322
+  Prompt 2: Struct=5 Acc=2 Comp=5 Instr=5 Total=17/20 | Latency=2.75s | Tokens=462
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=2.94s | Tokens=205
+
+--- deepseek.v3.2 ---
+  Prompt 1: Struct=5 Acc=4 Comp=5 Instr=5 Total=19/20 | Latency=12.11s | Tokens=219
+  Prompt 2: Struct=5 Acc=3 Comp=5 Instr=3 Total=16/20 | Latency=28.72s | Tokens=357
+  Prompt 3: Struct=5 Acc=5 Comp=4 Instr=5 Total=19/20 | Latency=5.73s | Tokens=265
+
+--- nvidia.nemotron-super-3-120b ---
+  Prompt 1: Struct=4 Acc=5 Comp=5 Instr=5 Total=19/20 | Latency=1.58s | Tokens=168
+  Prompt 2: Struct=5 Acc=3 Comp=5 Instr=3 Total=16/20 | Latency=2.37s | Tokens=384
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=1.30s | Tokens=187
+
+--- zai.glm-5 ---
+  Prompt 1: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=3.92s | Tokens=246
+  Prompt 2: Struct=3 Acc=3 Comp=4 Instr=5 Total=15/20 | Latency=2.19s | Tokens=262
+  Prompt 3: Struct=5 Acc=5 Comp=5 Instr=5 Total=20/20 | Latency=9.46s | Tokens=226
+
+================================================================================
+FINAL RANKINGS
+================================================================================
+
+Rank Model                                        Score       Avg Lat     Avg Tok   Errors  
+--------------------------------------------------------------------------------------------
+1    amazon.nova-pro-v1:0                         59/60       2.19s       283       0       
+2    amazon.nova-micro-v1:0                       58/60       1.39s       325       0       
+3    mistral.mistral-large-2402-v1:0              58/60       7.07s       351       0       
+4    amazon.nova-lite-v1:0                        57/60       1.71s       266       0       
+5    anthropic.claude-3-sonnet-20240229-v1:0      56/60       4.41s       251       0       
+6    qwen.qwen3-32b-v1:0                          56/60       2.79s       330       0       
+7    mistral.magistral-small-2509                 55/60       2.55s       280       0       
+8    nvidia.nemotron-super-3-120b                 55/60       1.75s       246       0       
+9    zai.glm-5                                    55/60       5.19s       245       0       
+10   anthropic.claude-3-haiku-20240307-v1:0       54/60       2.54s       216       0       
+11   deepseek.v3.2                                54/60       15.52s      280       0       
+12   meta.llama3-70b-instruct-v1:0                0/60        0.00s       0         3       
+
+LATENCY RANKING (fastest first, excluding errors):
+------------------------------------------------------------
+  1. amazon.nova-micro-v1:0                        1.39s avg
+  2. amazon.nova-lite-v1:0                         1.71s avg
+  3. nvidia.nemotron-super-3-120b                  1.75s avg
+  4. amazon.nova-pro-v1:0                          2.19s avg
+  5. anthropic.claude-3-haiku-20240307-v1:0        2.54s avg
+  6. mistral.magistral-small-2509                  2.55s avg
+  7. qwen.qwen3-32b-v1:0                           2.79s avg
+  8. anthropic.claude-3-sonnet-20240229-v1:0       4.41s avg
+  9. zai.glm-5                                     5.19s avg
+  10. mistral.mistral-large-2402-v1:0               7.07s avg
+  11. deepseek.v3.2                                 15.52s avg
+
+================================================================================
+RECOMMENDED: amazon.nova-pro-v1:0
+  Score: 59/60 | Avg Latency: 2.19s
+================================================================================

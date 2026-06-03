@@ -49,9 +49,7 @@ def classify_document(filename: str, text: str) -> tuple[str, str, list[str], st
     Uses Bedrock to determine category and type based on content.
     Falls back to Uncategorized if the LLM call fails.
     """
-    model_id = os.getenv("BEDROCK_CLASSIFY_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "")
-    if not model_id:
-        return "Uncategorized", "general", ["general"], "", ""
+    model_id = os.getenv("BEDROCK_CLASSIFY_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "") or "amazon.nova-micro-v1:0"
 
     existing = _get_existing_categories()
     probe_text = text[:2000]

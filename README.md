@@ -66,6 +66,8 @@ When you upload a PDF, the app handles each page individually:
 
 ![Search and Ask Flow](docs/diagrams/search_ask.png)
 
+Search uses a **hybrid approach** combining BM25 lexical matching with kNN vector similarity. Each chunk is embedded at indexing time using Amazon Titan Embeddings v2, and at search time both the keyword score and semantic similarity score are combined to rank results. This means you get exact-match precision *and* semantic recall — a query like "how tall can my fence be" will match a chunk about "perimeter barriers shall not exceed six feet" even though the words don't overlap.
+
 ### Syncing from BookStack
 
 BookStack is a local wiki that runs alongside the app. When you upload through the app, documents are automatically organized in BookStack by category. You can also manage documents directly in BookStack and sync them back.
@@ -124,15 +126,42 @@ Click the "Create" tab to generate new documents from your indexed content.
 
 ### Model Selection
 
-Five separate models can be configured in Settings:
+Six separate models can be configured in Settings:
 
-- **Ask AI Model** — For quick Q&A answers (default: Amazon Nova Pro — fast, accurate)
-- **Create Document Model** — For document/template generation (default: Claude Sonnet 3 — best instruction following)
-- **Template Extraction Model** — For analyzing template structure on import (default: Amazon Nova Pro — fast JSON)
-- **Vision OCR Model** — For reading scanned pages and images (default: Claude Haiku 3 — cheapest with vision)
-- **Format Detection Model** — For detecting output format from prompts (default: Mistral Large 3 — fastest)
+- **Ask AI Model** — For quick Q&A answers (default: Qwen3 32B — fastest high-accuracy model, 0.58s)
+- **Create Document Model** — For document/template generation (default: Amazon Nova Pro — highest quality 59/60, fast)
+- **Template Extraction Model** — For analyzing template structure on import (default: Mistral Magistral Small — best field/section detection)
+- **Vision OCR Model** — For reading scanned pages and images (default: Mistral Ministral 3B — perfect accuracy, fastest at 0.49s)
+- **Format Detection Model** — For detecting output format from prompts (default: Llama 3 8B — fastest at 194ms, perfect cleanliness)
+- **Embedding Model** — For generating vector embeddings at index and search time (default: Amazon Titan Embed Text v2 — 1024 dimensions, ~$0.0001/chunk)
 
 Models from 11+ families are supported: Anthropic, Amazon, NVIDIA, Mistral, DeepSeek, Meta, Google, AI21, Qwen, Z.AI, and OpenAI (GPT-OSS). Each model in Settings shows descriptive tags like `[$ cheapest · fast]` or `[$$ balanced · best for document generation]`.
+
+## Gap-to-Email
+
+Click the "📧 Gap-to-Email" tab to analyze forms against vendor documents and generate follow-up emails.
+
+### How It Works
+
+![Gap-to-Email Pipeline](docs/diagrams/gap_to_email.png)
+
+1. Select a **form document** (e.g., an HOA application) that defines what's required
+2. Optionally add **context documents** (e.g., architectural standards, guidelines) for compliance checking
+3. Add **vendors** — each with a name, contact info, and their relevant documents
+4. Optionally paste an **example email** to match tone and structure
+5. Click "Analyze Gaps & Generate Emails"
+6. For each vendor, the system:
+   - Reads the form requirements
+   - Compares against what the vendor already provided in their documents
+   - Identifies specific gaps (missing items)
+   - Generates a tailored follow-up email requesting only what's missing
+
+### Use Cases
+
+- HOA applications: gather contractor documentation for architectural review board submissions
+- Insurance claims: identify missing documentation from adjusters or repair vendors
+- Closing paperwork: track which parties still owe documents for settlement
+- Any workflow where a form requires inputs from multiple vendors
 
 ## Document Preview
 
@@ -246,6 +275,7 @@ Key endpoints:
 - `POST /ask` - Ask a question and get an AI answer with citations
 - `POST /generate` - Generate a document from a prompt (returns markdown)
 - `POST /generate/convert` - Convert markdown to DOCX, PDF, PNG, or PPTX
+- `POST /gap-to-email` - Analyze form requirements vs vendor docs, generate follow-up emails
 - `GET /documents` - List all documents
 - `GET /documents/{id}` - Get a single document
 - `GET /documents/{id}/chunks` - Get a document's text chunks

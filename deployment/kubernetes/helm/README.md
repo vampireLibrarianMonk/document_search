@@ -37,7 +37,7 @@ Click "🏥 Health" in the app to see:
 - Per-pod status with component name, age, restarts, CPU/memory
 - Color-coded: green = healthy, red = failing
 
-## Uploading, Searching, Asking, Creating
+## Uploading, Searching, Asking, Creating, Gap-to-Email
 
 Same as Docker Compose. See the main app README for full usage instructions.
 

@@ -1,0 +1,180 @@
+==========================================================================================
+EMBEDDING MODEL BENCHMARK RESULTS - House Document Hybrid Search
+==========================================================================================
+
+Test setup: 8 document chunks, 15 queries
+Metrics: Accuracy@1 (top result correct), MRR (mean reciprocal rank)
+Context: App uses hybrid BM25 + kNN, so embedding quality matters for paraphrase recall
+
+------------------------------------------------------------------------------------------
+Model                                   Dim   Acc@1    MRR   Latency    Cost/1K
+------------------------------------------------------------------------------------------
+amazon.titan-embed-text-v2:0           1024  93.3%  0.967     121ms $0.00002
+cohere.embed-multilingual-v3           1024  93.3%  0.967      96ms $0.00010
+cohere.embed-v4:0                      1536  93.3%  0.967     145ms $0.00010
+cohere.embed-english-v3                1024  93.3%  0.956     101ms $0.00010
+amazon.titan-embed-text-v1             1536  86.7%  0.933     122ms $0.00010
+amazon.titan-embed-g1-text-02          1536  86.7%  0.933     127ms $0.00010
+amazon.titan-embed-image-v1            1024  80.0%  0.889     145ms $0.00010
+------------------------------------------------------------------------------------------
+
+
+DETAILED PER-QUERY RESULTS
+==========================================================================================
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: amazon.titan-embed-text-v2:0 (1024d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.5538 ✓
+  quarterly HOA fees                            D1   D1     1    0.3285 ✓
+  roof condition                                D2   D2     1    0.4464 ✓
+  property tax deadlines                        D3   D3     1    0.7080 ✓
+  shed building rules                           D4   D4     1    0.4778 ✓
+  home insurance coverage amounts               D5   D5     1    0.5029 ✓
+  mortgage interest rate                        D6   D6     1    0.2693 ✓
+  air conditioning inspection                   D7   D7     1    0.2347 ✓
+  what materials are allowed for fencing        D0   D0     1    0.4053 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.4276 ✗
+  shingle damage                                D2   D2     1    0.3366 ✓
+  maximum size for outbuildings                 D4   D4     1    0.6941 ✓
+  how much dwelling coverage                    D5   D5     1    0.5842 ✓
+  monthly payment amount                        D6   D6     1    0.3542 ✓
+  heat pump age and condition                   D7   D7     1    0.6073 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: cohere.embed-multilingual-v3 (1024d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.6714 ✓
+  quarterly HOA fees                            D1   D1     1    0.5938 ✓
+  roof condition                                D2   D2     1    0.5437 ✓
+  property tax deadlines                        D3   D3     1    0.6857 ✓
+  shed building rules                           D4   D4     1    0.6324 ✓
+  home insurance coverage amounts               D5   D5     1    0.6951 ✓
+  mortgage interest rate                        D6   D6     1    0.6228 ✓
+  air conditioning inspection                   D7   D7     1    0.4564 ✓
+  what materials are allowed for fencing        D0   D0     1    0.6181 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.5722 ✗
+  shingle damage                                D2   D2     1    0.5143 ✓
+  maximum size for outbuildings                 D4   D4     1    0.6932 ✓
+  how much dwelling coverage                    D5   D5     1    0.7466 ✓
+  monthly payment amount                        D6   D6     1    0.6430 ✓
+  heat pump age and condition                   D7   D7     1    0.6652 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: cohere.embed-v4:0 (1536d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.5386 ✓
+  quarterly HOA fees                            D1   D1     1    0.4512 ✓
+  roof condition                                D2   D2     1    0.3960 ✓
+  property tax deadlines                        D3   D3     1    0.5348 ✓
+  shed building rules                           D4   D4     1    0.4670 ✓
+  home insurance coverage amounts               D5   D5     1    0.5230 ✓
+  mortgage interest rate                        D6   D6     1    0.3753 ✓
+  air conditioning inspection                   D7   D7     1    0.4036 ✓
+  what materials are allowed for fencing        D0   D0     1    0.5135 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.4034 ✗
+  shingle damage                                D2   D2     1    0.3839 ✓
+  maximum size for outbuildings                 D4   D4     1    0.5863 ✓
+  how much dwelling coverage                    D5   D5     1    0.5555 ✓
+  monthly payment amount                        D6   D6     1    0.4171 ✓
+  heat pump age and condition                   D7   D7     1    0.5037 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: cohere.embed-english-v3 (1024d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.6434 ✓
+  quarterly HOA fees                            D1   D1     1    0.4527 ✓
+  roof condition                                D2   D2     1    0.5379 ✓
+  property tax deadlines                        D3   D3     1    0.6080 ✓
+  shed building rules                           D4   D4     1    0.5656 ✓
+  home insurance coverage amounts               D5   D5     1    0.6529 ✓
+  mortgage interest rate                        D6   D6     1    0.5772 ✓
+  air conditioning inspection                   D7   D7     1    0.3797 ✓
+  what materials are allowed for fencing        D0   D0     1    0.6341 ✓
+  when do I pay my neighborhood dues            D1   D3     3    0.5162 ✗
+  shingle damage                                D2   D2     1    0.5203 ✓
+  maximum size for outbuildings                 D4   D4     1    0.6574 ✓
+  how much dwelling coverage                    D5   D5     1    0.6224 ✓
+  monthly payment amount                        D6   D6     1    0.5154 ✓
+  heat pump age and condition                   D7   D7     1    0.6267 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: amazon.titan-embed-text-v1 (1536d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.7033 ✓
+  quarterly HOA fees                            D1   D3     2    0.3555 ✗
+  roof condition                                D2   D2     1    0.6806 ✓
+  property tax deadlines                        D3   D3     1    0.6652 ✓
+  shed building rules                           D4   D4     1    0.5888 ✓
+  home insurance coverage amounts               D5   D5     1    0.6630 ✓
+  mortgage interest rate                        D6   D6     1    0.4795 ✓
+  air conditioning inspection                   D7   D7     1    0.5642 ✓
+  what materials are allowed for fencing        D0   D0     1    0.6050 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.4670 ✗
+  shingle damage                                D2   D2     1    0.6197 ✓
+  maximum size for outbuildings                 D4   D4     1    0.6127 ✓
+  how much dwelling coverage                    D5   D5     1    0.6267 ✓
+  monthly payment amount                        D6   D6     1    0.4101 ✓
+  heat pump age and condition                   D7   D7     1    0.6920 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: amazon.titan-embed-g1-text-02 (1536d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.7033 ✓
+  quarterly HOA fees                            D1   D3     2    0.3555 ✗
+  roof condition                                D2   D2     1    0.6806 ✓
+  property tax deadlines                        D3   D3     1    0.6652 ✓
+  shed building rules                           D4   D4     1    0.5888 ✓
+  home insurance coverage amounts               D5   D5     1    0.6630 ✓
+  mortgage interest rate                        D6   D6     1    0.4795 ✓
+  air conditioning inspection                   D7   D7     1    0.5642 ✓
+  what materials are allowed for fencing        D0   D0     1    0.6050 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.4670 ✗
+  shingle damage                                D2   D2     1    0.6197 ✓
+  maximum size for outbuildings                 D4   D4     1    0.6127 ✓
+  how much dwelling coverage                    D5   D5     1    0.6267 ✓
+  monthly payment amount                        D6   D6     1    0.4101 ✓
+  heat pump age and condition                   D7   D7     1    0.6920 ✓
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Model: amazon.titan-embed-image-v1 (1024d)
+──────────────────────────────────────────────────────────────────────────────────────────
+  Query                                         Expected Got Rank Top Score
+  --------------------------------------------- --- --- ---- ---------
+  how tall can my fence be                      D0   D0     1    0.6243 ✓
+  quarterly HOA fees                            D1   D1     1    0.6060 ✓
+  roof condition                                D2   D2     1    0.6909 ✓
+  property tax deadlines                        D3   D3     1    0.7177 ✓
+  shed building rules                           D4   D4     1    0.7149 ✓
+  home insurance coverage amounts               D5   D5     1    0.6027 ✓
+  mortgage interest rate                        D6   D3     2    0.5497 ✗
+  air conditioning inspection                   D7   D7     1    0.5647 ✓
+  what materials are allowed for fencing        D0   D0     1    0.7212 ✓
+  when do I pay my neighborhood dues            D1   D3     2    0.6020 ✗
+  shingle damage                                D2   D2     1    0.7226 ✓
+  maximum size for outbuildings                 D4   D4     1    0.7340 ✓
+  how much dwelling coverage                    D5   D5     1    0.6540 ✓
+  monthly payment amount                        D6   D3     3    0.5899 ✗
+  heat pump age and condition                   D7   D7     1    0.5777 ✓
+
+
+==========================================================================================
+ANALYSIS & RECOMMENDATION
+==========================================================================================
+
+  Best overall (MRR):  amazon.titan-embed-text-v2:0 — MRR 0.967, Acc@1 93.3%
+  Best value (≥80%):   amazon.titan-embed-text-v2:0 — MRR 0.967, Cost $0.00002/1K tokens
+
+  Current default: amazon.titan-embed-text-v2:0 at $0.00002/1K tokens (5x cheaper than alternatives)

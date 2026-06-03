@@ -33,7 +33,7 @@ def extract_template(file_bytes: bytes, filename: str) -> dict:
     text = _get_text_for_analysis(file_bytes, ext)
 
     # Try Bedrock-enhanced extraction first
-    model_id = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", os.getenv("BEDROCK_MODEL_ID", ""))
+    model_id = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", os.getenv("BEDROCK_MODEL_ID", "mistral.magistral-small-2509"))
     if model_id and text and ext in (".docx", ".doc"):
         # For DOCX: always use local extraction (XML is authoritative for structure)
         # Bedrock only adds title/type detection

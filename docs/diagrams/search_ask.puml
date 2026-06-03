@@ -2,16 +2,19 @@
 !theme plain
 skinparam backgroundColor #FEFEFE
 
-title Search & Ask AI Flow
+title Search & Ask AI Flow (Hybrid: BM25 + Vector)
 
 start
 
 :User enters query;
 
 if (Mode?) then (Search)
-  :Send to OpenSearch\n(BM25 multi_match);
+  :Embed query via\nBedrock Titan Embeddings;
+
+  :Send hybrid query to OpenSearch\n(BM25 + kNN cosine similarity);
 
   if (OpenSearch available?) then (yes)
+    :Combine BM25 lexical scores\n+ kNN semantic scores;
     :Return ranked results\nwith highlighted snippets\nand facets;
   else (no)
     :Fallback: scan Postgres\nkeyword scoring;
@@ -21,7 +24,9 @@ if (Mode?) then (Search)
   stop
 
 else (Ask AI)
-  :Search OpenSearch\nfor top chunks (top_k * 5);
+  :Embed query via\nBedrock Titan Embeddings;
+
+  :Hybrid search OpenSearch\nfor top chunks (top_k * 5)\n(BM25 + kNN);
 
   :Deduplicate:\n1. Best chunk per document\n2. Fill remaining slots\n   from top-scoring docs;
 

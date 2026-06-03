@@ -1,0 +1,246 @@
+================================================================================
+TEMPLATE EXTRACTION MODEL BENCHMARK
+================================================================================
+
+Task: Extract structured JSON from document templates
+Expected output: {page_layout, fonts, sections, fillable_fields}
+Models tested: 12
+Templates: academic_thesis, hoa_modification_app
+
+--------------------------------------------------------------------------------
+Rank Model                                     Score   JSON   Schema   Sec    Fields   Latency Err
+--------------------------------------------------------------------------------
+1    mistral.magistral-small-2509              85.0    2/2    100%     3.0/5  4.5/5    6.9     0
+2    zai.glm-5                                 82.0    2/2    100%     2.0/5  5.0/5    8.4     0
+3    meta.llama3-70b-instruct-v1:0             79.0    2/2    100%     1.5/5  5.0/5    11.1    0
+4    mistral.mistral-large-2402-v1:0           76.0    2/2    100%     1.5/5  4.5/5    12.7    0
+5    deepseek.v3.2                             76.0    2/2    100%     2.0/5  4.0/5    15.1    0
+6    amazon.nova-pro-v1:0                      64.5    2/2    88%      2.0/5  2.5/5    3.3     0
+7    anthropic.claude-3-sonnet-20240229-v1:0   64.0    2/2    100%     1.0/5  3.0/5    7.4     0
+8    qwen.qwen3-32b-v1:0                       61.5    2/2    88%      1.5/5  2.5/5    1.9     0
+9    nvidia.nemotron-super-3-120b              55.5    2/2    88%      3.0/5  0.0/5    6.4     0
+10   anthropic.claude-3-haiku-20240307-v1:0    44.0    2/2    75%      1.5/5  0.0/5    5.8     0
+11   amazon.nova-micro-v1:0                    41.0    2/2    75%      1.0/5  0.0/5    1.7     0
+12   amazon.nova-lite-v1:0                     41.0    2/2    75%      1.0/5  0.0/5    2.3     0
+--------------------------------------------------------------------------------
+
+Scoring breakdown:
+  Composite = JSON validity (20%) + Schema compliance (20%) + Section detection (30%) + Field detection (30%)
+  JSON: valid parseable JSON output (pass/fail per template)
+  Schema: has sections, fonts, page_layout, fillable_fields (4 checks per template)
+  Sections: correctly identified document sections (0-5 per template)
+  Fields: correctly identified fillable fields, checkboxes, signatures (0-5 per template)
+  Latency: average response time in seconds
+
+================================================================================
+DETAILED RESULTS
+================================================================================
+
+────────────────────────────────────────────────────────────
+Model: mistral.magistral-small-2509
+Composite Score: 85.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 7.08s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 4/5
+    Field Score: 4/5
+    Latency: 6.78s
+
+────────────────────────────────────────────────────────────
+Model: zai.glm-5
+Composite Score: 82.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 5.28s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 11.59s
+
+────────────────────────────────────────────────────────────
+Model: meta.llama3-70b-instruct-v1:0
+Composite Score: 79.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 10.70s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 1/5
+    Field Score: 5/5
+    Latency: 11.57s
+
+────────────────────────────────────────────────────────────
+Model: mistral.mistral-large-2402-v1:0
+Composite Score: 76.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 1/5
+    Field Score: 5/5
+    Latency: 10.00s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 4/5
+    Latency: 15.48s
+
+────────────────────────────────────────────────────────────
+Model: deepseek.v3.2
+Composite Score: 76.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 11.52s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 3/5
+    Latency: 18.65s
+
+────────────────────────────────────────────────────────────
+Model: amazon.nova-pro-v1:0
+Composite Score: 64.5/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 3.12s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 2/5
+    Field Score: 0/5
+    Latency: 3.40s
+
+────────────────────────────────────────────────────────────
+Model: anthropic.claude-3-sonnet-20240229-v1:0
+Composite Score: 64.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 5.61s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 0/5
+    Field Score: 1/5
+    Latency: 9.24s
+
+────────────────────────────────────────────────────────────
+Model: qwen.qwen3-32b-v1:0
+Composite Score: 61.5/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 2/5
+    Field Score: 5/5
+    Latency: 1.49s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 1/5
+    Field Score: 0/5
+    Latency: 2.24s
+
+────────────────────────────────────────────────────────────
+Model: nvidia.nemotron-super-3-120b
+Composite Score: 55.5/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 2/5
+    Field Score: 0/5
+    Latency: 3.81s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✓
+    Section Score: 4/5
+    Field Score: 0/5
+    Latency: 8.93s
+
+────────────────────────────────────────────────────────────
+Model: anthropic.claude-3-haiku-20240307-v1:0
+Composite Score: 44.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 2/5
+    Field Score: 0/5
+    Latency: 5.97s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 1/5
+    Field Score: 0/5
+    Latency: 5.69s
+
+────────────────────────────────────────────────────────────
+Model: amazon.nova-micro-v1:0
+Composite Score: 41.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 2/5
+    Field Score: 0/5
+    Latency: 1.78s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 0/5
+    Field Score: 0/5
+    Latency: 1.64s
+
+────────────────────────────────────────────────────────────
+Model: amazon.nova-lite-v1:0
+Composite Score: 41.0/100
+────────────────────────────────────────────────────────────
+  Template: academic_thesis
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 2/5
+    Field Score: 0/5
+    Latency: 1.61s
+  Template: hoa_modification_app
+    JSON Valid: Yes
+    Schema: sections=✓ fonts=✓ page_layout=✓ fillable_fields=✗
+    Section Score: 0/5
+    Field Score: 0/5
+    Latency: 3.05s
+
+================================================================================
+RECOMMENDATION: mistral.magistral-small-2509
+  Best overall for template extraction with composite score 85.0/100
+================================================================================

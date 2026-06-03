@@ -1,0 +1,276 @@
+==========================================================================================
+FORMAT DETECTION BENCHMARK RESULTS
+==========================================================================================
+Rank Model                                        Accuracy  Clean   Avg ms    Notes
+------------------------------------------------------------------------------------------
+1    meta.llama3-8b-instruct-v1:0                 7/8     8/8        194ms   
+2    amazon.nova-micro-v1:0                       7/8     8/8        294ms   
+3    qwen.qwen3-32b-v1:0                          7/8     8/8        323ms   
+4    amazon.nova-lite-v1:0                        7/8     8/8        328ms   
+5    mistral.magistral-small-2509                 7/8     8/8        341ms   
+6    anthropic.claude-3-haiku-20240307-v1:0       7/8     8/8        403ms   
+7    nvidia.nemotron-nano-3-30b                   7/8     8/8        470ms   
+8    deepseek.v3.2                                7/8     8/8       3725ms   
+9    zai.glm-4.7-flash                            7/8     7/8        305ms   
+10   mistral.mistral-large-2402-v1:0              7/8     7/8        450ms   
+11   mistral.mistral-small-2402-v1:0              6/8     7/8        242ms   
+12   mistral.ministral-3-8b-instruct              4/8     4/8        269ms   
+13   mistral.ministral-3-3b-instruct              2/8     2/8        232ms   
+------------------------------------------------------------------------------------------
+
+
+DETAILED RESPONSES
+==========================================================================================
+
+meta.llama3-8b-instruct-v1:0 — 7/8 correct, 8/8 clean, 194ms avg
+----------------------------------------------------------------------
+  ✓C [  194ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  182ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  188ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  179ms] expect=docx  got='docx|closing summary'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  179ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  248ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  187ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  197ms] expect=md    got='docx|detailed report'
+       prompt: Write up the roof inspection findings
+
+amazon.nova-micro-v1:0 — 7/8 correct, 8/8 clean, 294ms avg
+----------------------------------------------------------------------
+  ✓C [  355ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  304ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  262ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  256ms] expect=docx  got='docx|formal document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  277ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  336ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  291ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  268ms] expect=md    got='txt|email message'
+       prompt: Write up the roof inspection findings
+
+qwen.qwen3-32b-v1:0 — 7/8 correct, 8/8 clean, 323ms avg
+----------------------------------------------------------------------
+  ✓C [  510ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  308ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  415ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  199ms] expect=docx  got='docx|editable document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  305ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  403ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  214ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  231ms] expect=md    got='docx|detailed report'
+       prompt: Write up the roof inspection findings
+
+amazon.nova-lite-v1:0 — 7/8 correct, 8/8 clean, 328ms avg
+----------------------------------------------------------------------
+  ✓C [  280ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  387ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  294ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  311ms] expect=docx  got='docx|formal summary'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  281ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  408ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  362ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  300ms] expect=md    got='docx|formal report'
+       prompt: Write up the roof inspection findings
+
+mistral.magistral-small-2509 — 7/8 correct, 8/8 clean, 341ms avg
+----------------------------------------------------------------------
+  ✓C [  329ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  293ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  209ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  596ms] expect=docx  got='docx|word document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  251ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  361ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  414ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  276ms] expect=md    got='docx|detailed report'
+       prompt: Write up the roof inspection findings
+
+anthropic.claude-3-haiku-20240307-v1:0 — 7/8 correct, 8/8 clean, 403ms avg
+----------------------------------------------------------------------
+  ✓C [ 1039ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  287ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  246ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  341ms] expect=docx  got='docx|formal document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  244ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  430ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  310ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  325ms] expect=md    got='pdf|formal report'
+       prompt: Write up the roof inspection findings
+
+nvidia.nemotron-nano-3-30b — 7/8 correct, 8/8 clean, 470ms avg
+----------------------------------------------------------------------
+  ✓C [ 1102ms] expect=pptx  got='pptx|presentation'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  235ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  464ms] expect=txt   got='TXT|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  350ms] expect=docx  got='docx|summary document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  284ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  650ms] expect=md    got='md|markdown summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  260ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  411ms] expect=md    got='pdf|report summary'
+       prompt: Write up the roof inspection findings
+
+deepseek.v3.2 — 7/8 correct, 8/8 clean, 3725ms avg
+----------------------------------------------------------------------
+  ✓C [15197ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [ 1385ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  973ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  452ms] expect=docx  got='docx|formal report document'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  443ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [ 9388ms] expect=md    got='md|already markdown'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  472ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [ 1492ms] expect=md    got='docx|formal report'
+       prompt: Write up the roof inspection findings
+
+zai.glm-4.7-flash — 7/8 correct, 7/8 clean, 305ms avg
+----------------------------------------------------------------------
+  ✓C [  325ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  306ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  326ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✗  [  293ms] expect=docx  got='FORMAT: docx\nREASON: formal summary report'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  241ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  416ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  208ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✓C [  329ms] expect=md    got='md|text summary'
+       prompt: Write up the roof inspection findings
+
+mistral.mistral-large-2402-v1:0 — 7/8 correct, 7/8 clean, 450ms avg
+----------------------------------------------------------------------
+  ✓C [  752ms] expect=pptx  got='pptx|slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  261ms] expect=pdf   got='pdf|formal report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  259ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  283ms] expect=docx  got='docx|closing summary'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  343ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  267ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✓C [  272ms] expect=docx  got='docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗  [ 1166ms] expect=md    got='pdf|official record\n\n"Roof Inspection Findings"\n\n1. Introduction'
+       prompt: Write up the roof inspection findings
+
+mistral.mistral-small-2402-v1:0 — 6/8 correct, 7/8 clean, 242ms avg
+----------------------------------------------------------------------
+  ✓C [  231ms] expect=pptx  got='pptx|slide presentation'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  253ms] expect=pdf   got='pdf|professional report'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✓C [  219ms] expect=txt   got='txt|email message'
+       prompt: Draft an email to my HOA about the fence
+  ✓C [  230ms] expect=docx  got='docx|closing summary'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  241ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  231ms] expect=md    got='md|text summary'
+       prompt: Create a markdown summary of my insurance coverage
+  ✗  [  304ms] expect=docx  got='FORMAT|REASON\ndocx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✗C [  223ms] expect=md    got='docx|detailed report'
+       prompt: Write up the roof inspection findings
+
+mistral.ministral-3-8b-instruct — 4/8 correct, 4/8 clean, 269ms avg
+----------------------------------------------------------------------
+  ✗  [  257ms] expect=pptx  got='**pptx | structured visual**'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✓C [  229ms] expect=pdf   got='pdf|detailed presentation'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✗  [  340ms] expect=txt   got='FORMAT|txt\nREASON:quick messaging'
+       prompt: Draft an email to my HOA about the fence
+  ✗  [  224ms] expect=docx  got='FORMAT|docx\nREASON|document closing draft'
+       prompt: Generate a Word document with the closing summary
+  ✓C [  232ms] expect=png   got='png|visual reference'
+       prompt: Make a reference card image of important dates
+  ✓C [  152ms] expect=md    got='md|structured reliability'
+       prompt: Create a markdown summary of my insurance coverage
+  ✗  [  338ms] expect=docx  got='FORMAT|docx|fillable form'
+       prompt: Fill out the exterior modification application
+  ✓C [  384ms] expect=md    got='md|text summary'
+       prompt: Write up the roof inspection findings
+
+mistral.ministral-3-3b-instruct — 2/8 correct, 2/8 clean, 232ms avg
+----------------------------------------------------------------------
+  ✓C [  289ms] expect=pptx  got='pptx|clear slide deck'
+       prompt: Create a PowerPoint presentation about my HOA rules
+  ✗  [  231ms] expect=pdf   got='**pdf|structured document**\n\n*(formal compliance, append clause headers/footers, TOC'
+       prompt: Write a PDF report summarizing my inspection findings
+  ✗  [  254ms] expect=txt   got='**txt|casual draft**'
+       prompt: Draft an email to my HOA about the fence
+  ✗  [  209ms] expect=docx  got='**docx**|exchangeable structured format for readability.'
+       prompt: Generate a Word document with the closing summary
+  ✗  [  193ms] expect=png   got='**png|clear visual summary**'
+       prompt: Make a reference card image of important dates
+  ✗  [  286ms] expect=md    got='**FORMAT|REASON**\n**md|Clean, scannable text format**'
+       prompt: Create a markdown summary of my insurance coverage
+  ✗  [  205ms] expect=docx  got='**docx|fillable application form**'
+       prompt: Fill out the exterior modification application
+  ✓C [  192ms] expect=md    got='md|structured report with headings'
+       prompt: Write up the roof inspection findings
+
+==========================================================================================
+RECOMMENDATION
+==========================================================================================
+Best model: meta.llama3-8b-instruct-v1:0
+  Accuracy: 7/8, Cleanliness: 8/8, Avg latency: 194ms

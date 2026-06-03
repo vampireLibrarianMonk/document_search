@@ -72,7 +72,7 @@ def _extract_page_image(page, page_num: int, path: str) -> str:
         buf = BytesIO()
         images[0].save(buf, format="JPEG", quality=80)
 
-        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
+        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "mistral.ministral-3-3b-instruct")
         resp = _get_bedrock().converse(
             modelId=model_id,
             messages=[
@@ -221,7 +221,7 @@ def _extract_standalone_image(path: str) -> str:
         fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".tiff": "tiff", ".tif": "tiff"}
         fmt = fmt_map.get(ext, "jpeg")
 
-        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
+        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "mistral.ministral-3-3b-instruct")
         resp = _get_bedrock().converse(
             modelId=model_id,
             messages=[
@@ -311,7 +311,7 @@ def _extract_docx_with_images(path: str) -> tuple[str, list[str]]:
                                 image_count += 1
 
                                 # Send to vision LLM
-                                model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "")
+                                model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "mistral.ministral-3-3b-instruct")
                                 if model_id:
                                     # Determine format
                                     content_type = image_part.content_type or "image/png"

@@ -1,0 +1,732 @@
+{
+  "timestamp": "2026-06-02 09:34:31",
+  "region": "us-east-1",
+  "system_prompt": "You are a helpful assistant that answers questions about house documents (HOA rules, inspection reports, closing paperwork, insurance, etc). Answer the question using ONLY the provided document excerpts. Give a clear, direct answer in plain English that a non-expert would understand. If the excerpts don't contain enough information to answer, say so honestly.",
+  "models": [
+    "amazon.nova-micro-v1:0",
+    "amazon.nova-lite-v1:0",
+    "amazon.nova-pro-v1:0",
+    "anthropic.claude-3-haiku-20240307-v1:0",
+    "anthropic.claude-3-sonnet-20240229-v1:0",
+    "mistral.mistral-large-2402-v1:0",
+    "mistral.magistral-small-2509",
+    "meta.llama3-70b-instruct-v1:0",
+    "qwen.qwen3-32b-v1:0",
+    "deepseek.v3.2",
+    "nvidia.nemotron-super-3-120b",
+    "zai.glm-5",
+    "openai.gpt-oss-120b-1:0"
+  ],
+  "results": {
+    "amazon.nova-micro-v1:0": {
+      "accuracy": 12,
+      "groundedness": 5,
+      "conciseness": 21,
+      "avg_latency": 0.4640846252441406,
+      "total_input_tokens": 1620,
+      "total_output_tokens": 254,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Your fence cannot exceed six (6) feet in height as measured from the natural grade on the higher side.",
+          "accuracy": 3,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.5427098274230957
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.3505070209503174
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage. This is shown under Coverage A in your Homeowners Insurance Declarations Page.",
+          "accuracy": 3,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.3173689842224121
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your property taxes for the year 2024 are due in two installments. The first half is due on October 1, 2024, and the second half is due on March 1, 2025. If you miss these dates, interest starts accru",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 0.6332166194915771
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector said that the roof is functional but showing signs of age and will likely need replacement soon. The roof has curling shingles and some granules are missing, especially in certain areas.",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 0.4766206741333008
+        }
+      ]
+    },
+    "amazon.nova-lite-v1:0": {
+      "accuracy": 13,
+      "groundedness": 5,
+      "conciseness": 22,
+      "avg_latency": 0.5782683372497559,
+      "total_input_tokens": 1620,
+      "total_output_tokens": 256,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Your perimeter fence cannot exceed six (6) feet in height, and front yard fences are limited to four (4) feet in height.",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.6920521259307861
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.31542158126831055
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage.",
+          "accuracy": 2,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.268169641494751
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your taxes for the year 2024 are due in two installments:\n\n1. The first half is due on October 1, 2024.\n2. The second half is due on March 1, 2025.\n\nYou can pay online, by mail, or in person. If you c",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 0.6779811382293701
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector, Mike Torres, noted that the roof is a composition shingle with an estimated age of about 15 years. The roof is in fair condition, showing signs of wear such as curling shingles on the s",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 0.9377171993255615
+        }
+      ]
+    },
+    "amazon.nova-pro-v1:0": {
+      "accuracy": 13,
+      "groundedness": 5,
+      "conciseness": 20,
+      "avg_latency": 0.7059649467468262,
+      "total_input_tokens": 1620,
+      "total_output_tokens": 306,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Your fence can be up to six (6) feet tall, measured from the natural grade on the higher side. However, if it's a front yard fence, it can only be up to four (4) feet tall. Make sure to get approval f",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 0.6234779357910156
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.38942694664001465
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage for your home at 1847 Oakwood Drive, Gilbert, AZ 85297.",
+          "accuracy": 2,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.7487258911132812
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your taxes are due in two payments:\n- The first half is due on October 1, 2024.\n- The second half is due on March 1, 2025.\n\nIf you choose to pay the entire amount at once, it is due by December 31, 20",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 0.629359245300293
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector, Mike Torres, said that the roof is functional but showing signs of wear and is nearing the end of its expected service life. He noted that the shingles are curling, especially on the so",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 2,
+          "latency": 1.1388347148895264
+        }
+      ]
+    },
+    "anthropic.claude-3-haiku-20240307-v1:0": {
+      "accuracy": 17,
+      "groundedness": 4,
+      "conciseness": 18,
+      "avg_latency": 1.6920005321502685,
+      "total_input_tokens": 1716,
+      "total_output_tokens": 509,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "According to the HOA Architectural Guidelines, fences cannot exceed 6 feet in height as measured from the natural grade on the higher side. Front yard fences are limited to a maximum of 4 feet in heig",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 2.2007100582122803
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "According to the Closing Disclosure, your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.42737817764282227
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "Based on the information provided in the homeowners insurance declarations page, your dwelling coverage (Coverage A) is $525,000.",
+          "accuracy": 3,
+          "grounded": 0,
+          "conciseness": 5,
+          "latency": 0.5543756484985352
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "According to the 2024 Property Tax Statement, your taxes are due in two installments:\n\nFirst Half: Due October 1, 2024, and delinquent if not paid by November 1, 2024.\n\nSecond Half: Due March 1, 2025,",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 1.7731571197509766
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "Based on the home inspection report excerpts, the inspector made the following key observations about the roof:\n\n- The roof is a composition shingle (architectural style) and is estimated to be approx",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 1,
+          "latency": 3.5043816566467285
+        }
+      ]
+    },
+    "anthropic.claude-3-sonnet-20240229-v1:0": {
+      "accuracy": 17,
+      "groundedness": 5,
+      "conciseness": 17,
+      "avg_latency": 2.0221903800964354,
+      "total_input_tokens": 1716,
+      "total_output_tokens": 546,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "According to the HOA Architectural Guidelines excerpt provided, the maximum allowed height for fences is 6 feet, measured from the natural grade on the higher side. However, fences in front yards are ",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 1.9713683128356934
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "According to the Closing Disclosure excerpt provided, your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.6474595069885254
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "According to the Coverage Summary on the Homeowners Insurance Declarations Page, you have $525,000 of Coverage A - Dwelling coverage.",
+          "accuracy": 3,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.8104391098022461
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "According to the 2024 Property Tax Statement, your property taxes have the following due dates:\n\nFirst Half Due: October 1, 2024\nFirst Half Delinquent After: November 1, 2024\n\nSecond Half Due: March 1",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 2.047163963317871
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "According to the home inspection report excerpts provided, the inspector made the following key observations about the roof:\n\n- The roof is a composition shingle (architectural style) roof, estimated ",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 1,
+          "latency": 4.634521007537842
+        }
+      ]
+    },
+    "mistral.mistral-large-2402-v1:0": {
+      "accuracy": 17,
+      "groundedness": 4,
+      "conciseness": 19,
+      "avg_latency": 2.8120344161987303,
+      "total_input_tokens": 1894,
+      "total_output_tokens": 414,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "In your community, perimeter fences are allowed to be up to six feet tall, as measured from the natural grade on the higher side. However, if the fence is in the front yard, it is limited to four feet",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 1.4773859977722168
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.36170077323913574
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "Based on the provided Homeowners Insurance Declarations Page, you have dwelling coverage of $525,000. This is listed under Coverage A - Dwelling in the Coverage Summary section of the document.",
+          "accuracy": 3,
+          "grounded": 0,
+          "conciseness": 5,
+          "latency": 1.0956759452819824
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your property taxes for the year 2024 are due in two installments. The first half is due on October 1, 2024, and it will become delinquent if not paid by November 1, 2024. The second half is due on Ma",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 2.530214548110962
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector said that the roof is in fair condition but showing age-related wear. The roof is a composition shingle type, approximately 15 years old, and has multiple areas of curling shingles on th",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 2,
+          "latency": 8.595194816589355
+        }
+      ]
+    },
+    "mistral.magistral-small-2509": {
+      "accuracy": 16,
+      "groundedness": 5,
+      "conciseness": 19,
+      "avg_latency": 1.495730209350586,
+      "total_input_tokens": 1738,
+      "total_output_tokens": 404,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Your fence can be up to 6 feet tall on the sides or back of your property. However, if it's in the front yard, the maximum height is 4 feet and must be made of wrought iron or decorative aluminum. Als",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 1.1050012111663818
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.3470168113708496
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage for your home at 1847 Oakwood Drive, Gilbert, AZ 85297.",
+          "accuracy": 2,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.8853898048400879
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Based on the provided tax statement, your taxes are due in two halves:\n\n- First half is due on October 1, 2024 (delinquent after November 1, 2024)\n- Second half is due on March 1, 2025 (delinquent aft",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 1.989870309829712
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector, Mike Torres, examined the roof on February 28, 2024. He noted that it is a composition shingle roof, about 15 years old, and in \"fair\" condition due to its age.\n\nKey points:\n- Some shin",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 2,
+          "latency": 3.1513729095458984
+        }
+      ]
+    },
+    "meta.llama3-70b-instruct-v1:0": {
+      "accuracy": 17,
+      "groundedness": 5,
+      "conciseness": 21,
+      "avg_latency": 1.4484095573425293,
+      "total_input_tokens": 1573,
+      "total_output_tokens": 292,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "\n\nAccording to the HOA Architectural Guidelines, the maximum height of your fence depends on its location. \n\n* For perimeter fences, the maximum height is 6 feet as measured from the natural grade on ",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 1.5389585494995117
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "\n\nAccording to the Closing Disclosure, your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.6326127052307129
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "\n\nAccording to the Homeowners Insurance Declarations Page, you have $525,000 in dwelling coverage (Coverage A).",
+          "accuracy": 3,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.6851012706756592
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "\n\nAccording to the 2024 Property Tax Statement, your taxes are due in two installments:\n\n* First half: Due on October 1, 2024, and delinquent after November 1, 2024.\n* Second half: Due on March 1, 202",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 2.2239115238189697
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "\n\nAccording to the home inspection report, the inspector said that the roof is in \"Fair\" condition, showing age-related wear, and is nearing the end of its expected service life. Specifically, the ins",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 2.161463737487793
+        }
+      ]
+    },
+    "qwen.qwen3-32b-v1:0": {
+      "accuracy": 16,
+      "groundedness": 5,
+      "conciseness": 21,
+      "avg_latency": 0.5798932075500488,
+      "total_input_tokens": 1722,
+      "total_output_tokens": 309,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "The height of your fence depends on where you live on your property:\n\n- In general, perimeter fences and privacy walls cannot be taller than **6 feet**, measured from the higher side's natural ground ",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 0.6949725151062012
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.3731224536895752
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage under your homeowners insurance policy.",
+          "accuracy": 2,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.42394042015075684
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your property taxes are due in two installments:\n\n1. **First Half:** Due on **October 1, 2024**, with a delinquent date of **November 1, 2024**.\n2. **Second Half:** Due on **March 1, 2025**, with a de",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 0.7167885303497314
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector said the roof is in fair condition but is nearing the end of its expected life due to age-related wear. Specifically, he noted curling shingles (especially on the south-facing side), gra",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 0.6906421184539795
+        }
+      ]
+    },
+    "deepseek.v3.2": {
+      "accuracy": 12,
+      "groundedness": 4,
+      "conciseness": 21,
+      "avg_latency": 23.663501834869386,
+      "total_input_tokens": 1526,
+      "total_output_tokens": 256,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Based on the excerpts, your fence's maximum height depends on its location. **In the front yard, the fence cannot be taller than 4 feet. For any other perimeter fence, the maximum height is 6 feet.** ",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 32.55850791931152
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "According to the document, your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 1.1347570419311523
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "Your dwelling coverage is $525,000.",
+          "accuracy": 2,
+          "grounded": 0,
+          "conciseness": 5,
+          "latency": 0.42433857917785645
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Based on the document, your 2024 property taxes have a split-payment schedule:\n\n*   **First Half:** Due by **October 1, 2024**.\n*   **Second Half:** Due by **March 1, 2025**.\n\nIf you choose to pay the",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 82.15135765075684
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector said the roof is in fair condition but showing its age. It's about 15 years old, has curling shingles on the south side, and some granule loss. While there were no active leaks found, th",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 2.0485479831695557
+        }
+      ]
+    },
+    "nvidia.nemotron-super-3-120b": {
+      "accuracy": 12,
+      "groundedness": 5,
+      "conciseness": 20,
+      "avg_latency": 5.399048757553101,
+      "total_input_tokens": 1793,
+      "total_output_tokens": 323,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "Fences may not exceed six (6) feet in height as measured from the natural grade on the higher side. Front yard fences are limited to four (4) feet. The height restriction applies to perimeter fences a",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 5.966484069824219
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "6.875%",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 11.844494819641113
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "$525,000",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 1.3164091110229492
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "Your taxes are due in two installments: the first half is due October 1, 2024, and the second half is due March 1, 2025. If you pay in full, the entire amount of $5,412.78 must be paid by December 31,",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 7.016063928604126
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector reported that the roof is 15 years old and shows signs of age-related wear, including curling shingles on the south-facing slope, granule loss in valleys and high-traffic areas, dried an",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 3,
+          "latency": 0.8517918586730957
+        }
+      ]
+    },
+    "zai.glm-5": {
+      "accuracy": 13,
+      "groundedness": 5,
+      "conciseness": 20,
+      "avg_latency": 1.4006493091583252,
+      "total_input_tokens": 1552,
+      "total_output_tokens": 316,
+      "errors": 0,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "answer": "It depends on where the fence is located on your property:\n\n*   **Perimeter and Privacy Fences:** These can be up to **6 feet** tall.\n*   **Front Yard Fences:** These are limited to **4 feet** tall.\n\n",
+          "accuracy": 4,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 1.7141845226287842
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "answer": "Your interest rate is 6.875%.",
+          "accuracy": 1,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.622459888458252
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "answer": "You have $525,000 in dwelling coverage (Coverage A).",
+          "accuracy": 3,
+          "grounded": 1,
+          "conciseness": 5,
+          "latency": 0.8934533596038818
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "answer": "According to the document, you have two options for payment:\n\n**If paying in halves:**\n*   The **first half** is due October 1, 2024.\n*   The **second half** is due March 1, 2025.\n\n**If paying in full",
+          "accuracy": 0,
+          "grounded": 1,
+          "conciseness": 4,
+          "latency": 1.036665439605713
+        },
+        {
+          "scenario": "Inspection Report",
+          "answer": "The inspector found the roof to be in fair condition and functional, but showing signs of age. According to the report:\n\n*   **Age and Condition:** The roof is approximately 15 years old and is nearin",
+          "accuracy": 5,
+          "grounded": 1,
+          "conciseness": 2,
+          "latency": 2.736483335494995
+        }
+      ]
+    },
+    "openai.gpt-oss-120b-1:0": {
+      "accuracy": 0,
+      "groundedness": 0,
+      "conciseness": 0,
+      "avg_latency": 0.0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "errors": 5,
+      "answers": [
+        {
+          "scenario": "HOA Fence Rules",
+          "error": "'text'"
+        },
+        {
+          "scenario": "Closing Disclosure",
+          "error": "'text'"
+        },
+        {
+          "scenario": "Insurance Declarations",
+          "error": "'text'"
+        },
+        {
+          "scenario": "Property Tax Notice",
+          "error": "'text'"
+        },
+        {
+          "scenario": "Inspection Report",
+          "error": "'text'"
+        }
+      ]
+    }
+  },
+  "ranked": [
+    {
+      "rank": 1,
+      "model": "meta.llama3-70b-instruct-v1:0",
+      "composite_score": 46.6
+    },
+    {
+      "rank": 2,
+      "model": "qwen.qwen3-32b-v1:0",
+      "composite_score": 46.4
+    },
+    {
+      "rank": 3,
+      "model": "amazon.nova-lite-v1:0",
+      "composite_score": 44.4
+    },
+    {
+      "rank": 4,
+      "model": "mistral.magistral-small-2509",
+      "composite_score": 43.5
+    },
+    {
+      "rank": 5,
+      "model": "amazon.nova-micro-v1:0",
+      "composite_score": 42.5
+    },
+    {
+      "rank": 6,
+      "model": "amazon.nova-pro-v1:0",
+      "composite_score": 42.3
+    },
+    {
+      "rank": 7,
+      "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+      "composite_score": 42.0
+    },
+    {
+      "rank": 8,
+      "model": "zai.glm-5",
+      "composite_score": 41.6
+    },
+    {
+      "rank": 9,
+      "model": "anthropic.claude-3-haiku-20240307-v1:0",
+      "composite_score": 38.3
+    },
+    {
+      "rank": 10,
+      "model": "mistral.mistral-large-2402-v1:0",
+      "composite_score": 38.2
+    },
+    {
+      "rank": 11,
+      "model": "nvidia.nemotron-super-3-120b",
+      "composite_score": 36.6
+    },
+    {
+      "rank": 12,
+      "model": "deepseek.v3.2",
+      "composite_score": 28
+    },
+    {
+      "rank": 13,
+      "model": "openai.gpt-oss-120b-1:0",
+      "composite_score": 0
+    }
+  ]
+}

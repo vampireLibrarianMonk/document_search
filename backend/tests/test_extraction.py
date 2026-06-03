@@ -78,7 +78,7 @@ def test_extract_text_from_txt():
     with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
         f.write("HOA rules say fences must be under 6 feet.")
         f.flush()
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
     assert "fences" in result
     assert "6 feet" in result
@@ -89,7 +89,7 @@ def test_extract_text_from_md():
     with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
         f.write("# Rules\n\nNo sheds without approval.")
         f.flush()
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
     assert "sheds" in result
 
@@ -99,7 +99,7 @@ def test_extract_text_empty_file():
     with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
         f.write("")
         f.flush()
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
     assert result == ""
 
@@ -122,7 +122,7 @@ def test_extract_text_pdf_with_text(mock_reader_cls):
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         f.write(b"fake pdf")
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
 
     assert "HOA rules" in result
@@ -141,7 +141,7 @@ def test_extract_text_pdf_image_only_page(mock_reader_cls, mock_vision):
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         f.write(b"fake pdf")
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
 
     mock_vision.assert_called_once()
@@ -160,7 +160,7 @@ def test_extract_text_pdf_mixed_page(mock_reader_cls, mock_vision):
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         f.write(b"fake pdf")
-        result = extract_text(f.name)
+        result, _ = extract_text(f.name)
     os.unlink(f.name)
 
     assert "closing costs" in result
