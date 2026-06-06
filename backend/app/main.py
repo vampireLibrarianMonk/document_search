@@ -563,12 +563,43 @@ def gap_to_email(payload: GapEmailRequest):
     form_chunks = store.get_chunks(payload.form_document_id)
     form_text = "\n".join(c.content for c in form_chunks)
 
-    # 2. Get additional context (e.g., ARB standards)
+    # 2. Get additional context (e.g., ARB standards) - auto-discover if not provided
     context_text = ""
-    for ctx_id in payload.context_document_ids:
-        ctx_chunks = store.get_chunks(ctx_id)
-        if ctx_chunks:
-            context_text += "\n".join(c.content for c in ctx_chunks) + "\n"
+    if payload.context_document_ids:
+        for ctx_id in payload.context_document_ids:
+            ctx_chunks = store.get_chunks(ctx_id)
+            if ctx_chunks:
+                context_text += "\n".join(c.content for c in ctx_chunks) + "\n"
+    else:
+        # Auto-search for relevant standards/guidelines based on form content
+        context_search = run_search(
+            store,
+            SearchRequest(
+                query=f"standards guidelines requirements rules specifications {form_text[:200]}",
+                mode="hybrid",
+                filters={},
+                page=1,
+                page_size=30,
+            ),
+        )
+        # Grab top context docs that aren't the form itself or vendor docs
+        all_vendor_doc_ids = set()
+        for v in payload.vendor_groups:
+            all_vendor_doc_ids.update(v.get("doc_ids", []))
+        seen_ctx = set()
+        for r in context_search.results:
+            if r.document_id == payload.form_document_id:
+                continue
+            if r.document_id in all_vendor_doc_ids:
+                continue
+            if r.document_id in seen_ctx:
+                continue
+            seen_ctx.add(r.document_id)
+            ctx_chunks = store.get_chunks(r.document_id)
+            if ctx_chunks:
+                context_text += "\n".join(c.content for c in ctx_chunks) + "\n"
+            if len(seen_ctx) >= 3:
+                break
 
     # 3. Process each vendor
     client = _get_bedrock()

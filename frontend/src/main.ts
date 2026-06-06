@@ -131,7 +131,11 @@ const state = reactive({
 
   // Gap-to-Email
   gapFormDocId: "" as string,
+  gapFormSearch: "" as string,
+  gapFormDropdownOpen: false,
   gapContextDocIds: [] as string[],
+  gapContextSearch: "" as string,
+  gapContextDropdownOpen: false,
   gapVendors: [] as Array<{ name: string; contact: string; doc_ids: string[]; notes: string }>,
   gapExampleEmail: "",
   gapLoading: false,
@@ -1300,31 +1304,41 @@ createApp({
                   h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 12px 0" }, "Gap-to-Email Pipeline"),
                   h("p", { style: "color:#9ca3af;font-size:.8rem;margin-bottom:16px" }, "Select a form, add vendors with their documents, and generate follow-up emails for missing items."),
 
-                  // Form document selector
-                  h("div", { style: "margin-bottom:12px" }, [
+                  // Form document autocomplete
+                  h("div", { style: "margin-bottom:12px;position:relative" }, [
                     h("label", { style: "font-size:.75rem;color:#9ca3af;display:block;margin-bottom:4px" }, "Form/Application Document"),
-                    h("select", {
+                    h("input", {
                       style: "width:100%;padding:6px 8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.8rem",
-                      value: state.gapFormDocId,
-                      onChange: (e: Event) => { state.gapFormDocId = (e.target as HTMLSelectElement).value; },
-                    }, [
-                      h("option", { value: "" }, "-- Select form document --"),
-                      ...state.documents.map((d: any) => h("option", { value: d.document_id }, d.title || d.original_filename)),
-                    ]),
+                      placeholder: "Start typing to search documents...",
+                      value: state.gapFormSearch ?? "",
+                      onInput: (e: Event) => {
+                        (state as any).gapFormSearch = (e.target as HTMLInputElement).value;
+                        (state as any).gapFormDropdownOpen = true;
+                      },
+                      onFocus: () => { (state as any).gapFormDropdownOpen = true; },
+                    }),
+                    state.gapFormDocId ? h("div", { style: "font-size:.7rem;color:#34d399;margin-top:3px" }, `✓ ${state.documents.find((d: any) => d.document_id === state.gapFormDocId)?.title || state.gapFormDocId}`) : null,
+                    (state as any).gapFormDropdownOpen && (state as any).gapFormSearch
+                      ? h("div", { style: "position:absolute;z-index:50;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#1f2937;border:1px solid #374151;border-radius:6px;margin-top:2px;box-shadow:0 4px 12px rgba(0,0,0,.4)" },
+                          state.documents
+                            .filter((d: any) => (d.title || d.original_filename || "").toLowerCase().includes(((state as any).gapFormSearch || "").toLowerCase()))
+                            .slice(0, 10)
+                            .map((d: any) =>
+                              h("div", {
+                                style: "padding:6px 10px;font-size:.75rem;color:#d1d5db;cursor:pointer;border-bottom:1px solid #374151",
+                                onMousedown: (e: Event) => {
+                                  e.preventDefault();
+                                  state.gapFormDocId = d.document_id;
+                                  (state as any).gapFormSearch = d.title || d.original_filename;
+                                  (state as any).gapFormDropdownOpen = false;
+                                },
+                              }, d.title || d.original_filename)
+                            )
+                        )
+                      : null,
                   ]),
 
-                  // Context documents (multi-select)
-                  h("div", { style: "margin-bottom:12px" }, [
-                    h("label", { style: "font-size:.75rem;color:#9ca3af;display:block;margin-bottom:4px" }, "Context Documents (standards, guidelines)"),
-                    h("select", {
-                      style: "width:100%;padding:6px 8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.8rem;height:80px",
-                      multiple: true,
-                      onChange: (e: Event) => {
-                        const sel = e.target as HTMLSelectElement;
-                        state.gapContextDocIds = Array.from(sel.selectedOptions).map(o => o.value);
-                      },
-                    }, state.documents.map((d: any) => h("option", { value: d.document_id, selected: state.gapContextDocIds.includes(d.document_id) }, d.title || d.original_filename))),
-                  ]),
+                  // Context documents auto-discovered - no manual selection needed
 
                   // Vendors list
                   h("div", { style: "margin-bottom:12px;border:1px solid #374151;border-radius:8px;padding:12px" }, [
@@ -1342,27 +1356,101 @@ createApp({
 
                     // Add vendor form
                     h("div", { style: "margin-top:8px;padding-top:8px;border-top:1px solid #374151" }, [
-                      h("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px" }, [
+                      h("div", { style: "margin-bottom:6px" }, [
                         h("input", {
-                          style: "padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem",
-                          placeholder: "Vendor name",
+                          style: "width:100%;padding:6px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.8rem",
+                          placeholder: "Type vendor name (e.g., Brax Roofing)...",
                           value: state.gapNewVendorName,
-                          onInput: (e: Event) => { state.gapNewVendorName = (e.target as HTMLInputElement).value; },
-                        }),
-                        h("input", {
-                          style: "padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem",
-                          placeholder: "Contact (email/phone)",
-                          value: state.gapNewVendorContact,
-                          onInput: (e: Event) => { state.gapNewVendorContact = (e.target as HTMLInputElement).value; },
+                          onInput: async (e: Event) => {
+                            const val = (e.target as HTMLInputElement).value;
+                            state.gapNewVendorName = val;
+                            if (val.length >= 2) {
+                              // Auto-find docs matching vendor name (searches title + content)
+                              try {
+                                const res = await fetch(`${apiBase}/search`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ query: val, mode: "hybrid", page: 1, page_size: 20 }),
+                                });
+                                const data = await res.json();
+                                const results = data.results || [];
+                                // Dedupe by document_id, keep all results from search
+                                const seen = new Set<string>();
+                                const matchedDocs: string[] = [];
+                                let foundContact = "";
+                                for (const r of results) {
+                                  if (!seen.has(r.document_id)) {
+                                    seen.add(r.document_id);
+                                    matchedDocs.push(r.document_id);
+                                    // Try to extract contact from snippet
+                                    if (!foundContact) {
+                                      const emailMatch = (r.snippet || "").match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+                                      if (emailMatch) foundContact = emailMatch[0];
+                                    }
+                                  }
+                                }
+                                state.gapNewVendorDocs = matchedDocs;
+                                if (foundContact && !state.gapNewVendorContact) state.gapNewVendorContact = foundContact;
+                              } catch { /* ignore search errors */ }
+                            } else {
+                              state.gapNewVendorDocs = [];
+                            }
+                          },
                         }),
                       ]),
-                      h("select", {
-                        style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem;height:60px;margin-bottom:6px",
-                        multiple: true,
-                        onChange: (e: Event) => {
-                          state.gapNewVendorDocs = Array.from((e.target as HTMLSelectElement).selectedOptions).map(o => o.value);
-                        },
-                      }, state.documents.map((d: any) => h("option", { value: d.document_id }, d.title || d.original_filename))),
+                      // Contact (auto-populated or manual)
+                      h("input", {
+                        style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem;margin-bottom:6px",
+                        placeholder: "Contact (auto-populated or type manually)",
+                        value: state.gapNewVendorContact,
+                        onInput: (e: Event) => { state.gapNewVendorContact = (e.target as HTMLInputElement).value; },
+                      }),
+                      // Auto-populated docs list (editable)
+                      state.gapNewVendorDocs.length
+                        ? h("div", { style: "border:1px solid #374151;border-radius:4px;padding:4px 6px;margin-bottom:6px;background:#111827" }, [
+                            h("div", { style: "font-size:.7rem;color:#6b7280;margin-bottom:3px" }, `Documents found (${state.gapNewVendorDocs.length}):`),
+                            ...state.gapNewVendorDocs.map((id: string) => {
+                              const doc = state.documents.find((d: any) => d.document_id === id);
+                              return h("div", { style: "display:flex;align-items:center;gap:4px;padding:2px 0;font-size:.7rem;color:#d1d5db" }, [
+                                h("span", { style: "flex:1" }, doc ? (doc.title || doc.original_filename) : id),
+                                h("button", {
+                                  style: "color:#ef4444;border:none;background:none;cursor:pointer;font-size:.75rem;padding:0 3px",
+                                  onClick: () => { state.gapNewVendorDocs = state.gapNewVendorDocs.filter((i: string) => i !== id); },
+                                }, "×"),
+                              ]);
+                            }),
+                          ])
+                        : state.gapNewVendorName.length >= 2
+                          ? h("div", { style: "font-size:.7rem;color:#6b7280;margin-bottom:6px" }, "No matching documents found")
+                          : null,
+                      // Add more docs manually
+                      h("div", { style: "position:relative;margin-bottom:6px" }, [
+                        h("input", {
+                          style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.7rem",
+                          placeholder: "+ Add more documents...",
+                          value: (state as any).gapNewVendorDocSearch || "",
+                          onInput: (e: Event) => { (state as any).gapNewVendorDocSearch = (e.target as HTMLInputElement).value; (state as any).gapNewVendorDocDropdown = true; },
+                          onFocus: () => { (state as any).gapNewVendorDocDropdown = true; },
+                        }),
+                        (state as any).gapNewVendorDocDropdown && (state as any).gapNewVendorDocSearch
+                          ? h("div", { style: "position:absolute;z-index:50;top:100%;left:0;right:0;max-height:150px;overflow-y:auto;background:#1f2937;border:1px solid #374151;border-radius:4px;margin-top:2px;box-shadow:0 4px 12px rgba(0,0,0,.4)" },
+                              state.documents
+                                .filter((d: any) => !state.gapNewVendorDocs.includes(d.document_id) && (d.title || d.original_filename || "").toLowerCase().includes(((state as any).gapNewVendorDocSearch || "").toLowerCase()))
+                                .slice(0, 8)
+                                .map((d: any) =>
+                                  h("div", {
+                                    style: "padding:5px 8px;font-size:.7rem;color:#d1d5db;cursor:pointer;border-bottom:1px solid #374151",
+                                    onMousedown: (e: Event) => {
+                                      e.preventDefault();
+                                      state.gapNewVendorDocs.push(d.document_id);
+                                      (state as any).gapNewVendorDocSearch = "";
+                                      (state as any).gapNewVendorDocDropdown = false;
+                                    },
+                                  }, d.title || d.original_filename)
+                                )
+                            )
+                          : null,
+                      ]),
                       h("input", {
                         style: "width:100%;padding:4px 8px;border:1px solid #374151;border-radius:4px;background:#111827;color:#f3f4f6;font-size:.75rem;margin-bottom:6px",
                         placeholder: "Notes (optional - e.g., 'offered to help with HOA docs')",
@@ -1371,6 +1459,8 @@ createApp({
                       }),
                       h("button", {
                         class: "btn btn-sm btn-outline",
+                        style: state.gapNewVendorName && state.gapNewVendorDocs.length ? "" : "opacity:0.5",
+                        disabled: !state.gapNewVendorName || !state.gapNewVendorDocs.length,
                         onClick: () => {
                           if (state.gapNewVendorName && state.gapNewVendorDocs.length) {
                             state.gapVendors.push({
@@ -1383,6 +1473,7 @@ createApp({
                             state.gapNewVendorContact = "";
                             state.gapNewVendorDocs = [];
                             state.gapNewVendorNotes = "";
+                            (state as any).gapNewVendorDocSearch = "";
                           }
                         },
                       }, "+ Add Vendor"),
@@ -1416,7 +1507,7 @@ createApp({
                           body: JSON.stringify({
                             form_document_id: state.gapFormDocId,
                             vendor_groups: state.gapVendors,
-                            context_document_ids: state.gapContextDocIds,
+                            context_document_ids: [],
                             example_email: state.gapExampleEmail,
                           }),
                         });
@@ -1827,7 +1918,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" ? h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
