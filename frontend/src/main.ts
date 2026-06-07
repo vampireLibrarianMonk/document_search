@@ -128,6 +128,9 @@ const state = reactive({
   taskResult: "",
   taskLoading: false,
   taskRefinement: "",
+  taskStep: "prompt" as "prompt" | "review-docs" | "generating" | "result",
+  taskFoundDocs: [] as Array<{ document_id: string; title: string; score: number; snippet: string }>,
+  taskSearching: false,
 
   // Gap-to-Email
   gapFormDocId: "" as string,
@@ -518,6 +521,7 @@ async function runTask(refinement?: string) {
         document_ids: state.taskDocIds,
         history: state.taskHistory,
         format: "md",
+        skip_auto_search: state.taskDocIds.length > 0,
       }),
     });
     const reader = resp.body!.getReader();
@@ -534,10 +538,11 @@ async function runTask(refinement?: string) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.status) (state as any).taskStatus = data.status;
-            if (data.error) { state.taskResult = `Error: ${data.error}`; }
+            if (data.error) { state.taskResult = `Error: ${data.error}`; state.taskStep = "result"; }
             if (data.result) {
               state.taskResult = data.result.markdown;
               state.taskHistory = data.result.history || [];
+              state.taskStep = "result";
             }
           } catch { /* ignore parse errors */ }
         }
@@ -545,6 +550,7 @@ async function runTask(refinement?: string) {
     }
   } catch (e: any) {
     state.taskResult = `Error: ${e.message}`;
+    state.taskStep = "result";
   }
   state.taskLoading = false;
   state.taskRefinement = "";
@@ -557,6 +563,8 @@ function resetTask() {
   state.taskHistory = [];
   state.taskResult = "";
   state.taskRefinement = "";
+  state.taskStep = "prompt";
+  state.taskFoundDocs = [];
 }
 
 function checkModelWarnings() {
@@ -947,53 +955,137 @@ createApp({
               ? h("div", { class: "create-panel" }, [
                   h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
                     h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Task Workflow"),
-                    state.taskHistory.length > 0
+                    state.taskStep !== "prompt"
                       ? h("button", { class: "btn btn-sm btn-outline", onClick: resetTask }, "New Task")
                       : null,
                   ]),
-                  // Document selector
-                  h("div", { style: "margin-bottom:10px" }, [
-                    h("label", { style: "font-size:.75rem;color:#6b7280;display:block;margin-bottom:4px" }, "Source Documents (optional — auto-search finds relevant docs from your prompt):"),
-                    h("div", { style: "max-height:150px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;padding:6px" },
-                      state.documents.map((d: any) =>
-                        h("label", { style: "display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:.8rem;cursor:pointer" }, [
-                          h("input", {
-                            type: "checkbox",
-                            checked: state.taskDocIds.includes(d.document_id),
-                            onChange: (e: any) => {
-                              if (e.target.checked) { state.taskDocIds = [...state.taskDocIds, d.document_id]; }
-                              else { state.taskDocIds = state.taskDocIds.filter((id: string) => id !== d.document_id); }
-                            },
-                          }),
-                          h("span", d.title),
-                        ]),
-                      ),
-                    ),
-                    state.taskDocIds.length > 0
-                      ? h("div", { style: "font-size:.7rem;color:#6366f1;margin-top:4px" }, `${state.taskDocIds.length} documents selected`)
-                      : null,
-                  ]),
-                  // Prompt / refinement
-                  !state.taskResult
+
+                  // Step 1: Prompt
+                  state.taskStep === "prompt"
                     ? h("div", [
-                        h("textarea", { class: "create-textarea", placeholder: "Describe the document you want to create...", value: state.taskPrompt, onInput: (e: any) => (state.taskPrompt = e.target.value), style: "min-height:100px" }),
-                        h("button", { class: "btn btn-primary", style: "margin-top:8px", disabled: state.taskLoading || !state.taskPrompt.trim(), onClick: () => runTask() }, state.taskLoading ? "Generating..." : "Generate"),
-                        (state as any).taskStatus ? h("div", { style: "margin-top:8px;font-size:.78rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [h("span", { class: "spinner spinner-dark" }), h("span", (state as any).taskStatus)]) : null,
+                        h("textarea", { class: "create-textarea", placeholder: "Describe what you need (e.g., 'Write a description of proposed modification for the exterior modification form using American Home Contractors documents')...", value: state.taskPrompt, onInput: (e: any) => (state.taskPrompt = e.target.value), style: "min-height:100px" }),
+                        h("button", {
+                          class: "btn btn-primary", style: "margin-top:8px",
+                          disabled: state.taskSearching || !state.taskPrompt.trim(),
+                          onClick: async () => {
+                            state.taskSearching = true;
+                            try {
+                              // Primary search on the full prompt
+                              const res = await fetch(`${apiBase}/search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.taskPrompt, mode: "hybrid", page: 1, page_size: 20 }) });
+                              const data = await res.json();
+                              const results = data.results || [];
+                              const seen = new Set<string>();
+                              const found: Array<{ document_id: string; title: string; score: number; snippet: string }> = [];
+                              for (const r of results) {
+                                if (!seen.has(r.document_id)) {
+                                  seen.add(r.document_id);
+                                  found.push({ document_id: r.document_id, title: r.title, score: r.score, snippet: (r.snippet || "").replace(/<\/?em>/g, "") });
+                                }
+                              }
+                              // Extract capitalized entity names for follow-up searches
+                              const entityMatch = state.taskPrompt.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g);
+                              const searches: string[] = [];
+                              if (entityMatch) {
+                                for (const entity of entityMatch) {
+                                  searches.push(entity);
+                                  searches.push(`${entity} email correspondence reply`);
+                                  // Also search abbreviation (e.g., "American Home Contractors" -> "AHC")
+                                  const initials = entity.split(/\s+/).map((w: string) => w[0]).join("");
+                                  if (initials.length >= 2) searches.push(`${initials} project`);
+                                }
+                              }
+                              for (const q of searches) {
+                                const res2 = await fetch(`${apiBase}/search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q, mode: "hybrid", page: 1, page_size: 15 }) });
+                                const data2 = await res2.json();
+                                for (const r of (data2.results || [])) {
+                                  if (!seen.has(r.document_id)) {
+                                    seen.add(r.document_id);
+                                    found.push({ document_id: r.document_id, title: r.title, score: r.score, snippet: (r.snippet || "").replace(/<\/?em>/g, "") });
+                                  }
+                                }
+                              }
+                              state.taskFoundDocs = found;
+                              state.taskDocIds = found.map((d: any) => d.document_id);
+                              state.taskStep = "review-docs";
+                            } catch (e: any) {
+                              state.taskResult = `Error searching: ${e.message}`;
+                            }
+                            state.taskSearching = false;
+                          },
+                        }, state.taskSearching ? "Searching..." : "Find Documents →"),
                       ])
-                    : h("div", [
-                        h("div", { style: "border:1px solid #e5e7eb;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap;background:#fafafa;margin-bottom:10px" }, state.taskResult),
+                    : null,
+
+                  // Step 2: Review found documents
+                  state.taskStep === "review-docs"
+                    ? h("div", [
+                        h("div", { style: "font-size:.8rem;color:#9ca3af;margin-bottom:8px" }, `Found ${state.taskFoundDocs.length} documents. Select which to use:`),
+                        h("div", { style: "max-height:250px;overflow-y:auto;border:1px solid #374151;border-radius:6px;padding:6px;margin-bottom:10px" },
+                          state.taskFoundDocs.map((d: any) =>
+                            h("label", { style: "display:flex;align-items:flex-start;gap:8px;padding:6px;font-size:.8rem;cursor:pointer;color:#d1d5db;border-bottom:1px solid #1f2937;position:relative" }, [
+                              h("input", {
+                                type: "checkbox",
+                                style: "margin-top:2px",
+                                checked: state.taskDocIds.includes(d.document_id),
+                                onChange: (e: any) => {
+                                  if (e.target.checked) { state.taskDocIds = [...state.taskDocIds, d.document_id]; }
+                                  else { state.taskDocIds = state.taskDocIds.filter((id: string) => id !== d.document_id); }
+                                },
+                              }),
+                              h("div", { style: "flex:1;min-width:0" }, [
+                                h("div", { style: "display:flex;justify-content:space-between;align-items:center" }, [
+                                  h("span", { style: "font-weight:500" }, d.title),
+                                  h("span", { style: "font-size:.65rem;color:#6b7280;white-space:nowrap;margin-left:8px" }, `${d.score.toFixed(1)}`),
+                                ]),
+                                d.snippet
+                                  ? h("div", { style: "font-size:.7rem;color:#9ca3af;margin-top:3px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" }, `"${d.snippet.slice(0, 200)}${d.snippet.length > 200 ? "..." : ""}"`)
+                                  : null,
+                              ]),
+                            ])
+                          ),
+                        ),
+                        h("div", { style: "font-size:.7rem;color:#6b7280;margin-bottom:8px" }, `${state.taskDocIds.length} selected`),
+                        h("div", { style: "display:flex;gap:8px" }, [
+                          h("button", { class: "btn btn-sm btn-outline", onClick: () => { state.taskStep = "prompt"; } }, "← Back"),
+                          h("button", {
+                            class: "btn btn-primary",
+                            disabled: state.taskLoading || !state.taskDocIds.length,
+                            onClick: () => { state.taskStep = "generating"; runTask(); },
+                          }, "Generate →"),
+                        ]),
+                      ])
+                    : null,
+
+                  // Step 3: Generating (loading)
+                  state.taskStep === "generating"
+                    ? h("div", { style: "text-align:center;padding:20px" }, [
+                        h("div", { class: "spinner spinner-dark", style: "margin:0 auto 10px" }),
+                        (state as any).taskStatus ? h("div", { style: "font-size:.8rem;color:#6366f1" }, (state as any).taskStatus) : null,
+                      ])
+                    : null,
+
+                  // Step 4: Result + refinement
+                  state.taskStep === "result"
+                    ? h("div", [
+                        h("div", { style: "border:1px solid #374151;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap;background:#111827;color:#d1d5db;margin-bottom:10px" }, state.taskResult),
                         h("div", { style: "display:flex;gap:8px;align-items:flex-end" }, [
-                          h("textarea", { class: "create-textarea", placeholder: "Refine: e.g. 'Add Brax Roofing' or 'Add a cost comparison table'", value: state.taskRefinement, onInput: (e: any) => (state.taskRefinement = e.target.value), style: "min-height:60px;flex:1" }),
-                          h("button", { class: "btn btn-primary", disabled: state.taskLoading || !state.taskRefinement.trim(), onClick: () => runTask(state.taskRefinement) }, state.taskLoading ? "..." : "Refine"),
+                          h("textarea", { class: "create-textarea", placeholder: "Refine: e.g. 'Make it first person' or 'Add the plywood note'", value: state.taskRefinement, onInput: (e: any) => (state.taskRefinement = e.target.value), style: "min-height:60px;flex:1" }),
+                          h("button", { class: "btn btn-primary", disabled: state.taskLoading || !state.taskRefinement.trim(), onClick: () => { state.taskStep = "generating"; runTask(state.taskRefinement); } }, state.taskLoading ? "..." : "Refine"),
                         ]),
                         (state as any).taskStatus ? h("div", { style: "margin-top:8px;font-size:.78rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [h("span", { class: "spinner spinner-dark" }), h("span", (state as any).taskStatus)]) : null,
                         h("div", { style: "display:flex;gap:8px;margin-top:10px" }, [
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "pdf" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.pdf"; a.click(); } }, "📥 PDF"),
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "docx" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.docx"; a.click(); } }, "📥 DOCX"),
                           h("button", { class: "btn btn-sm btn-outline", onClick: () => { const b = new Blob([state.taskResult], { type: "text/markdown" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.md"; a.click(); } }, "📥 Markdown"),
+                          h("button", { class: "btn btn-sm btn-outline", onClick: async () => {
+                            const r = await fetch(`${apiBase}/generate/export-package`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, document_ids: state.taskDocIds, filename_prefix: "submission_package" }) });
+                            const data = await r.json();
+                            if (data.file_b64) { const bytes = Uint8Array.from(atob(data.file_b64), c => c.charCodeAt(0)); const blob = new Blob([bytes], { type: "application/zip" }); const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = data.filename || "submission_package.zip"; a.click(); }
+                          } }, "📦 Package (ZIP)"),
                         ]),
                         h("div", { style: "font-size:.7rem;color:#9ca3af;margin-top:8px" }, `${Math.floor(state.taskHistory.length / 2)} iteration(s)`),
-                      ]),
+                      ])
+                    : null,
                 ])
               : null,
             // Templates panel

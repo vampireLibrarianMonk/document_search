@@ -801,6 +801,7 @@ async def task_generate(body: dict):
     document_ids = body.get("document_ids", [])
     history = body.get("history", [])
     fmt = body.get("format", "md")
+    skip_auto_search = body.get("skip_auto_search", False)
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
@@ -827,7 +828,7 @@ async def task_generate(body: dict):
 
         # Auto-search for additional relevant documents
         auto_parts = []
-        if not history:
+        if not history and not skip_auto_search:
             yield f"data: {_json.dumps({'status': 'Searching for relevant documents...'})}\n\n"
             await asyncio.sleep(0)
             search_result = run_search(
@@ -1256,6 +1257,47 @@ def generate_convert(body: dict):
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
 
     return {"file_b64": base64.b64encode(file_bytes).decode(), "filename": filename}
+
+
+@app.post("/generate/export-package")
+def generate_export_package(body: dict):
+    """Export a writeup + associated source document files as a zip."""
+    import base64
+    import io
+    import zipfile
+
+    markdown = body.get("markdown", "").strip()
+    document_ids = body.get("document_ids", [])
+    filename_prefix = body.get("filename_prefix", "submission")
+
+    if not markdown:
+        raise HTTPException(status_code=400, detail="No content to export")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Write the text content
+        zf.writestr(f"{filename_prefix}.txt", markdown)
+
+        # Include source document files
+        for doc_id in document_ids:
+            doc = store.get_document(doc_id)
+            if not doc:
+                continue
+            # Find the uploaded file on disk
+            source_url = doc.source_url or ""
+            # source_url is like /app/data/uploads/doc_xxx_filename.pdf
+            file_path = source_url.replace("/app/", "")
+            full_path = Path(file_path)
+            if not full_path.exists():
+                # Try data/uploads directory
+                full_path = Path("data/uploads") / full_path.name
+            if full_path.exists():
+                # Use a clean filename
+                original = doc.original_filename or full_path.name
+                zf.write(full_path, original)
+
+    buf.seek(0)
+    return {"file_b64": base64.b64encode(buf.read()).decode(), "filename": f"{filename_prefix}.zip"}
 
 
 # -- Admin --

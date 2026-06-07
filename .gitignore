@@ -15,6 +15,7 @@ dist/
 backend/data/
 backend/backend/
 data/uploads/
+tmp/
 
 # Binary document files
 *.pdf
