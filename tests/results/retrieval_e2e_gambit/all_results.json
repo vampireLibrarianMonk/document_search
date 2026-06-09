@@ -1,0 +1,212 @@
+[
+  {
+    "prompt_name": "natural",
+    "prompt_text": "Fill out the description of proposed modification for the exterior modification form using American Home Contractors",
+    "retrieval": {
+      "docs_found": 15,
+      "time_s": 1.06,
+      "recall": 1.0,
+      "precision": 0.47,
+      "required_found": {
+        "doc_aaee35593d06": true,
+        "doc_6b883a64a4d0": true,
+        "doc_b866994701d3": true,
+        "doc_ece84354cbb5": true,
+        "doc_38cebc657b28": true
+      },
+      "required_hit": 5,
+      "required_total": 5,
+      "noise_found": {
+        "doc_6f864ae384d9": false,
+        "doc_707cc5dde5df": false,
+        "doc_183edbcecb4e": false,
+        "doc_57d1c14cee79": false
+      },
+      "noise_count": 0,
+      "total_docs_returned": 15
+    },
+    "generation": {
+      "text": "I am planning to replace my flat roof with American Home Contractors. They will remove the old roofing material and install a new GAF Liberty\u2122 self-adhering roofing system without using torches, open flames, hot asphalt, or messy adhesives. The work will include removing debris and leaving the work area in broom clean condition. The estimated start date is May 14, 2026, and the estimated completion date will be shortly after, depending on weather and crew availability. American Home Contractors is licensed in Virginia and will comply with all local permit and inspection requirements. I have provided their contact information and license numbers as part of this application. No changes to the structure, color, or footprint of the home are proposed\u2014only the roofing material is being replaced. I understand that I must submit this form through the management company and that ARB approval is required before any work begins. I am not making any other exterior changes at this time.",
+      "time_s": 3.48,
+      "facts": {
+        "price_7200": false,
+        "area_750": false,
+        "color_black": false,
+        "timeline_1_day": false,
+        "license_va": false,
+        "liberty_sbs": false
+      },
+      "facts_hit": 0,
+      "chars": 988
+    },
+    "total_time_s": 4.54
+  },
+  {
+    "prompt_name": "with_system",
+    "prompt_text": "Write the description of proposed modification for the HOA exterior modification application using American Home Contractors GAF LIBERTY SBS system",
+    "retrieval": {
+      "docs_found": 15,
+      "time_s": 0.85,
+      "recall": 1.0,
+      "precision": 0.47,
+      "required_found": {
+        "doc_aaee35593d06": true,
+        "doc_6b883a64a4d0": true,
+        "doc_b866994701d3": true,
+        "doc_ece84354cbb5": true,
+        "doc_38cebc657b28": true
+      },
+      "required_hit": 5,
+      "required_total": 5,
+      "noise_found": {
+        "doc_6f864ae384d9": false,
+        "doc_707cc5dde5df": false,
+        "doc_183edbcecb4e": false,
+        "doc_57d1c14cee79": false
+      },
+      "noise_count": 0,
+      "total_docs_returned": 15
+    },
+    "generation": {
+      "text": "I am removing the existing flat roof down to the roof sheathing and replacing it with a GAF LIBERTY\u2122 SBS Self-Adhering 2-ply roofing system. This includes installing new 1-inch ISO insulation boards, followed by the LIBERTY\u2122 SBS self-adhering base/ply sheet and cap sheet, all properly overlapped and sealed at seams, corners, and penetrations. Flashings and edge metals will be installed around the roof perimeter and all vent pipes to ensure a watertight seal. All project-related debris will be cleaned up and disposed of properly. The work will be performed by American Home Contractors, a licensed Virginia home improvement contractor, using materials that require no torches, open flames, hot asphalt, or solvent-based adhesives during installation. No plywood sheathing replacement is included in this quote; any such work would be an additional cost if needed upon inspection. The selected roofing system color will be specified separately on the application. This modification is for the low-slope roof area of the property at 12133 Tribune Street, Fairfax, VA 22033.",
+      "time_s": 4.05,
+      "facts": {
+        "price_7200": false,
+        "area_750": false,
+        "color_black": false,
+        "timeline_1_day": false,
+        "license_va": false,
+        "liberty_sbs": true
+      },
+      "facts_hit": 1,
+      "chars": 1076
+    },
+    "total_time_s": 4.9
+  },
+  {
+    "prompt_name": "conversational",
+    "prompt_text": "I need to fill out my HOA form for the roof replacement. The contractor is American Home Contractors and I'm going with the LIBERTY SBS option.",
+    "retrieval": {
+      "docs_found": 13,
+      "time_s": 0.86,
+      "recall": 0.8,
+      "precision": 0.38,
+      "required_found": {
+        "doc_aaee35593d06": true,
+        "doc_6b883a64a4d0": true,
+        "doc_b866994701d3": true,
+        "doc_ece84354cbb5": true,
+        "doc_38cebc657b28": false
+      },
+      "required_hit": 4,
+      "required_total": 5,
+      "noise_found": {
+        "doc_6f864ae384d9": false,
+        "doc_707cc5dde5df": false,
+        "doc_183edbcecb4e": false,
+        "doc_57d1c14cee79": true
+      },
+      "noise_count": 1,
+      "total_docs_returned": 13
+    },
+    "generation": {
+      "text": "Based on the provided documents, the contractor is American Home Contractors with M.H.I.C. #31337-03 and VA License #2705190396. They specialize in roofing, siding, windows/doors, and solar. The project is a Low-Slope/Flat Roof Replacement Proposal for 12133 Tribune Street, Fairfax, VA 22033. The selected option is the GAF LIBERTY\u2122 SBS Self-Adhering 2-ply Roofing System. This system is applied without torches, open flames, hot asphalt, or messy solvent-based adhesives. It provides long-lasting protection for low-slope areas and can be installed easily and quickly by a small roofing crew without bulky equipment or unpleasant odors. It is often 1/3 faster than conventional systems with minimal set-up or clean-up time and requires no extra tools. The LIBERTY\u2122 SBS Self-Adhering Roofing System has earned the Good Housekeeping Seal. The total cost for the LIBERTY SBS 2-ply Roofing System is $7,200.00. This covers site verification by a roof project supervisor, delivery of materials by boom truck, tear-off of the existing roof down to sheathing, furnishing and installing 1\" ISO insulation board anchored with screws and plates, furnishing and installing the LIBERTY\u2122 SBS Self-Adhering Base/Ply Sheet and Cap Sheet (with overlapped seams and reinforced corners and penetrations), furnishing and installing all flashings and edge metals, furnishing and installing new pipe flashings, and cleaning and disposing of all project-related debris. Wood replacement is not included and would be an additional cost if needed, such as 1/2\" CDX Plywood at $90/Sheet or 1/2\" FRT Plywood at $110/Sheet (both 32 sq ft), or 1x6 or 1x8 boards at $10/linear foot. Relocation of HVAC units would be quoted upon final site inspection if applicable. The project is for Patrick Flanigan, contactable at pmflani@gmail.com or 5402090256. The proposal date is May 14, 2026. The system is based on the same technology as GAF\u2019s RUBEROID\u00ae SBS modified bitumen membranes and is FM Approved, UL Classified, Miami-Dade County Product Control Approved, and FBC Approved. The available colors for the LIBERTY\u2122 SBS system include Black, Hickory, Shakewood, Slate, Tan, Weathered Wood, and White. American Home Contractors is a GAF MasterElite contractor. The company started in 1986 and serves Maryland, DC, and Northern Virginia, with offices in Fulton, MD and Chantilly, VA. Customer testimonials highlight their professionalism, timeliness, consultative approach, tidiness, and attention to detail. The contractor is licensed, bonded, and insured. Any changes to scope or price must be approved in writing and signed by both parties prior to work. The customer has the right to rescind the contract within 3 business days after signing by notifying the contractor in writing. Unless otherwise specified, rotted or damaged wood replacement or repair is an additional cost to the contract price. All Virginia home improvement contractors must be licensed, and inquiries can be directed to 703-222-0801 or TTY 711, or license status can be checked online.",
+      "time_s": 10.11,
+      "facts": {
+        "price_7200": true,
+        "area_750": false,
+        "color_black": true,
+        "timeline_1_day": false,
+        "license_va": true,
+        "liberty_sbs": true
+      },
+      "facts_hit": 4,
+      "chars": 3031
+    },
+    "total_time_s": 10.97
+  },
+  {
+    "prompt_name": "minimal",
+    "prompt_text": "American Home Contractors roof replacement HOA application",
+    "retrieval": {
+      "docs_found": 12,
+      "time_s": 0.87,
+      "recall": 0.8,
+      "precision": 0.42,
+      "required_found": {
+        "doc_aaee35593d06": true,
+        "doc_6b883a64a4d0": true,
+        "doc_b866994701d3": true,
+        "doc_ece84354cbb5": true,
+        "doc_38cebc657b28": false
+      },
+      "required_hit": 4,
+      "required_total": 5,
+      "noise_found": {
+        "doc_6f864ae384d9": false,
+        "doc_707cc5dde5df": false,
+        "doc_183edbcecb4e": false,
+        "doc_57d1c14cee79": false
+      },
+      "noise_count": 0,
+      "total_docs_returned": 12
+    },
+    "generation": {
+      "text": "I am applying for HOA approval to replace the flat roof at 12133 Tribune Street, Fairfax, VA 22033, under the name of Patrick Flanigan. American Home Contractors will perform the work, using the GAF Liberty\u2122 SBS 2-ply Roofing System as specified in their proposal dated May 14, 2026. The total cost for this replacement is $7,200.00. The company is licensed in Virginia under license #2705190396 and holds M.H.I.C. #31337-03. They are based in Maryland and Virginia, with offices in Fulton, MD and Chantilly, VA, and have been in business since 1986. The work will include removal of the existing roof, installation of new materials, and cleanup of all debris, leaving the work area in a broom-clean condition. All materials will be new unless otherwise specified. The contractor will comply with local building permit requirements and inspections. Additional work, such as rotted or damaged wood repair, will be billed separately on a time and material basis. The customer has the right to rescind the contract within three business days by providing written notice. I have reviewed and understand the terms and conditions of the proposal.",
+      "time_s": 3.81,
+      "facts": {
+        "price_7200": true,
+        "area_750": false,
+        "color_black": false,
+        "timeline_1_day": false,
+        "license_va": true,
+        "liberty_sbs": true
+      },
+      "facts_hit": 3,
+      "chars": 1140
+    },
+    "total_time_s": 4.68
+  },
+  {
+    "prompt_name": "detailed",
+    "prompt_text": "Look at the exterior modification application form. Using American Home Contractors documents (their proposal, emails from Jacob Estes, and roof dimensions), write the Description of Proposed Modification section using the GAF LIBERTY SBS Self-Adhered 2-Ply option.",
+    "retrieval": {
+      "docs_found": 24,
+      "time_s": 2.46,
+      "recall": 1.0,
+      "precision": 0.29,
+      "required_found": {
+        "doc_aaee35593d06": true,
+        "doc_6b883a64a4d0": true,
+        "doc_b866994701d3": true,
+        "doc_ece84354cbb5": true,
+        "doc_38cebc657b28": true
+      },
+      "required_hit": 5,
+      "required_total": 5,
+      "noise_found": {
+        "doc_6f864ae384d9": false,
+        "doc_707cc5dde5df": true,
+        "doc_183edbcecb4e": false,
+        "doc_57d1c14cee79": false
+      },
+      "noise_count": 1,
+      "total_docs_returned": 24
+    },
+    "generation": {
+      "text": "I am proposing to replace the existing flat roof on my home with a new GAF LIBERTY\u2122 SBS Self-Adhered 2-ply roofing system. The work will include a complete tear-off of the current roof down to the roof sheathing, followed by the installation of new 1-inch ISO insulation board anchored with screws and plates, tapered as needed for proper drainage. I will then have the LIBERTY\u2122 SBS Self-Adhering Base/Ply Sheet and Cap Sheet installed, with all seams overlapped and corners and penetrations reinforced. New flashings and edge metals will be installed around the roof perimeter and all vent pipes to ensure a watertight seal. All project-related debris will be cleaned up and disposed of properly. The materials will be selected in black to match the current roof appearance. This system is self-adhering, requiring no torches, open flames, hot asphalt, or solvent-based adhesives during installation, making it safer and cleaner for the property. The proposal from American Home Contractors includes all labor and materials for this system at a total cost of $7,200.00, based on the precise aerial measurement showing a total roof area of 750 square feet. A signed contract and a $100 deposit will be required to schedule the start date, with installation expected to take only one day once materials are delivered and work begins. Plywood sheathing replacement is not included in this quote and would be an additional cost if needed, as noted in the proposal.",
+      "time_s": 5.76,
+      "facts": {
+        "price_7200": true,
+        "area_750": true,
+        "color_black": true,
+        "timeline_1_day": true,
+        "license_va": false,
+        "liberty_sbs": true
+      },
+      "facts_hit": 5,
+      "chars": 1461
+    },
+    "total_time_s": 8.22
+  }
+]

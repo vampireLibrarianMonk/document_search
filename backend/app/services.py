@@ -296,8 +296,7 @@ def _keyword_score(query: str, content: str) -> float:
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = (
-    "You are a helpful assistant that answers questions about house documents "
-    "(HOA rules, inspection reports, closing paperwork, insurance, etc). "
+    "You are a helpful assistant that answers questions about documents. "
     "Answer the question using ONLY the provided document excerpts. "
     "Give a clear, direct answer in plain English that a non-expert would understand. "
     "If the excerpts don't contain enough information to answer, say so honestly."
@@ -308,23 +307,61 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
     """Retrieve relevant chunks then ask Bedrock for a plain-English answer.
 
     The flow:
-      1. Search for chunks matching the question
-      2. Deduplicate: spread across documents, but fill remaining slots from top docs
-      3. For each matched chunk, pull the full content plus neighbors from Postgres
-      4. Send all that context to Bedrock Claude
-      5. Return the answer with citations
+      1. Expand the question with technical terms for better retrieval
+      2. Search for chunks matching the expanded question
+      3. Deduplicate: spread across documents, but fill remaining slots from top docs
+      4. For each matched chunk, pull the full content plus neighbors from Postgres
+      5. Send all that context to Bedrock
+      6. Return the answer with citations
     """
-    # Step 1: search
+    # Step 0: expand the query for better retrieval
+    expanded_query = payload.question
+    try:
+        client = _get_bedrock()
+        resp = client.converse(
+            modelId="amazon.nova-micro-v1:0",
+            messages=[{"role": "user", "content": [{"text":
+                f"Rewrite this question as a search query that would find the answer in technical documents. "
+                f"Add relevant synonyms and technical terms. Return ONLY the search query, nothing else.\n\n"
+                f"Question: {payload.question}"
+            }]}],
+            inferenceConfig={"maxTokens": 100},
+        )
+        expanded = resp["output"]["message"]["content"][0]["text"].strip()
+        if expanded and len(expanded) > 5:
+            expanded_query = expanded
+    except Exception:
+        pass  # Fall back to original question
+
+    # Step 1: search with expanded query + original for broader coverage
     search = run_search(
         store,
         SearchRequest(
-            query=payload.question,
+            query=expanded_query,
             mode="hybrid",
             filters=payload.filters,
             page=1,
             page_size=max(1, payload.top_k) * 5,
         ),
     )
+    # Also search with original question to catch exact-match terms
+    if expanded_query != payload.question:
+        search2 = run_search(
+            store,
+            SearchRequest(
+                query=payload.question,
+                mode="hybrid",
+                filters=payload.filters,
+                page=1,
+                page_size=max(1, payload.top_k) * 3,
+            ),
+        )
+        # Merge results (dedup by chunk_id)
+        seen_chunks = {r.chunk_id for r in search.results}
+        for r in search2.results:
+            if r.chunk_id not in seen_chunks:
+                search.results.append(r)
+                seen_chunks.add(r.chunk_id)
 
     # Step 2: smart dedup - spread across documents first, then fill gaps
     seen_docs: dict[str, list[SearchResult]] = {}
@@ -424,4 +461,5 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
         citations=citations,
         documents=documents,
         suggested_queries=[],
+        expanded_query=expanded_query,
     )

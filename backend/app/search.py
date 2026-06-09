@@ -134,8 +134,15 @@ def search_chunks(
     filters: dict | None = None,
     page: int = 1,
     page_size: int = 10,
+    document_ids: list[str] | None = None,
+    top_k: int | None = None,
 ) -> dict:
-    """Hybrid search: BM25 + kNN vector similarity, combined with score normalization."""
+    """Hybrid search: BM25 + kNN vector similarity, combined with score normalization.
+    
+    When document_ids is provided, restricts search to chunks from those documents only.
+    When top_k is provided and document_ids is set, returns a dict of {doc_id: text} with
+    the top_k most relevant chunks grouped by document (for targeted context building).
+    """
     client = get_client()
 
     filter_clauses = []
@@ -145,6 +152,9 @@ def search_chunks(
                 filter_clauses.append({"term": {key: val}})
             elif key == "tag":
                 filter_clauses.append({"term": {"tags": val}})
+
+    if document_ids:
+        filter_clauses.append({"terms": {"document_id": document_ids}})
 
     # BM25 leg
     bm25_query = {
@@ -226,3 +236,158 @@ def search_chunks(
         "total": resp["hits"]["total"]["value"],
         "facets": facets,
     }
+
+
+def search_chunks_grouped(query: str, document_ids: list[str], top_k: int = 30) -> dict[str, str]:
+    """Search for relevant chunks within specific documents, return grouped text by doc_id.
+    
+    Used by the Tasks pipeline to get only the relevant portions of large documents
+    instead of loading entire documents into context.
+    """
+    result = search_chunks(query, document_ids=document_ids, page=1, page_size=top_k)
+    grouped: dict[str, list[str]] = {}
+    for r in result["results"]:
+        grouped.setdefault(r["document_id"], []).append(r["snippet"])
+    # Return full content text per document (deduplicated chunks joined)
+    # For better context, fetch full chunk content instead of just snippets
+    client = get_client()
+    doc_texts: dict[str, str] = {}
+    for doc_id, snippets in grouped.items():
+        # Get the actual chunk IDs we found, then fetch their full content
+        chunk_ids = [r["chunk_id"] for r in result["results"] if r["document_id"] == doc_id]
+        body = {"query": {"terms": {"chunk_id": chunk_ids}}, "size": len(chunk_ids)}
+        try:
+            resp = client.search(index=INDEX_NAME, body=body)
+            texts = [hit["_source"]["content"] for hit in resp["hits"]["hits"]]
+            doc_texts[doc_id] = "\n".join(texts)
+        except Exception:
+            doc_texts[doc_id] = "\n".join(snippets)
+    return doc_texts
+
+
+def decompose_prompt(query: str) -> dict:
+    """Use a fast model to decompose a user prompt into a structured intent map.
+    
+    Returns a dict with fields:
+      action, target_document, vendor, product, subject, output_type
+    Each field is used as a targeted retrieval/rerank signal.
+    """
+    import re
+
+    try:
+        client = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        resp = client.converse(
+            modelId="amazon.nova-micro-v1:0",
+            messages=[{"role": "user", "content": [{"text": (
+                "Decompose this prompt into a structured intent map. "
+                "Extract ONLY what is explicitly stated. Use empty string if not mentioned.\n\n"
+                f"Prompt: \"{query}\"\n\n"
+                "Respond with ONLY this JSON (no explanation):\n"
+                '{"action":"what the user wants to do",'
+                '"target_document":"specific form/document to fill or reference",'
+                '"vendor":"company/person/organization name",'
+                '"product":"specific product, system, or service mentioned",'
+                '"subject":"the topic/domain in 3-5 words",'
+                '"output_type":"what format the output should be"}'
+            )}]}],
+            inferenceConfig={"maxTokens": 200},
+        )
+        text = resp["output"]["message"]["content"][0]["text"]
+        match = re.search(r"\{[^}]+\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except Exception as e:
+        logger.warning("Prompt decomposition failed: %s", e)
+
+    return {"action": "", "target_document": "", "vendor": "", "product": "", "subject": "", "output_type": ""}
+
+
+def refine_document_selection(query: str, candidates: list[dict], top_k: int = 10) -> list[dict]:
+    """Document refinement using structured prompt decomposition + reranking.
+    
+    Phase 1: Decompose prompt into intent map (fast model)
+    Phase 2: Tag candidates with entity/vendor match from intent map
+    Phase 3: Rerank using subject+vendor+product as the query (content-focused)
+    Phase 4: Score cutoff — keep docs above threshold or entity matches
+    
+    Args:
+        query: The user's prompt
+        candidates: List of {document_id, title, score, snippet} dicts
+        top_k: Maximum documents to return
+    
+    Returns:
+        Filtered and reordered candidate list
+    """
+    import re
+
+    if not candidates:
+        return candidates
+
+    # === Phase 1: Decompose prompt ===
+    intent = decompose_prompt(query)
+    logger.info("Prompt decomposition: %s", intent)
+
+    # === Phase 2: Entity/vendor matching ===
+    vendor = (intent.get("vendor") or "").lower()
+    product = (intent.get("product") or "").lower()
+
+    for doc in candidates:
+        title_lower = (doc.get("title") or "").lower()
+        snippet_lower = (doc.get("snippet") or "").lower()
+        combined = title_lower + " " + snippet_lower
+        # Match if vendor or product appears in title or snippet
+        doc["_entity_match"] = bool(
+            (vendor and vendor in combined) or
+            (product and product in combined)
+        )
+
+    # === Phase 3: Rerank with content-focused query ===
+    # Build rerank query from the content fields (not the action)
+    rerank_parts = [intent.get("vendor", ""), intent.get("product", ""), intent.get("subject", "")]
+    rerank_query = " ".join(p for p in rerank_parts if p).strip()
+    if not rerank_query or len(rerank_query) < 5:
+        rerank_query = query  # fallback
+
+    try:
+        bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"))
+
+        rerank_docs = []
+        for doc in candidates:
+            title = doc.get("title", "")
+            snippet = doc.get("snippet", "")
+            rerank_docs.append(f"{title}. {snippet}"[:1024])
+
+        resp = bedrock.invoke_model(
+            modelId="cohere.rerank-v3-5:0",
+            body=json.dumps({
+                "api_version": 2,
+                "query": rerank_query,
+                "documents": rerank_docs,
+                "top_n": len(candidates),
+            }),
+        )
+        rerank_result = json.loads(resp["body"].read())
+
+        reranked = []
+        for item in rerank_result.get("results", []):
+            idx = item["index"]
+            candidates[idx]["_rerank_score"] = item["relevance_score"]
+            reranked.append(candidates[idx])
+        candidates = reranked
+
+    except Exception as e:
+        logger.warning("Rerank failed, skipping: %s", e)
+
+    # === Phase 4: Score cutoff ===
+    if any("_rerank_score" in doc for doc in candidates):
+        scores = [doc.get("_rerank_score", 0) for doc in candidates]
+        max_score = max(scores) if scores else 0
+        threshold = max_score * 0.08  # Keep docs scoring at least 8% of top
+        candidates = [
+            doc for doc in candidates
+            if doc.get("_rerank_score", 0) >= threshold or doc.get("_entity_match", False)
+        ]
+
+    return candidates[:top_k]
+
+    return candidates[:top_k]

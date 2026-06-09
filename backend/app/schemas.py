@@ -53,6 +53,7 @@ class AskResponse(BaseModel):
     citations: list[Citation]
     documents: list[str]
     suggested_queries: list[str]
+    expanded_query: str = ""
 
 
 # -- Ingestion --

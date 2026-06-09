@@ -72,6 +72,7 @@ const state = reactive({
   results: [] as SearchResult[],
   answer: "",
   citations: [] as Citation[],
+  askLog: [] as string[],
 
   // Document list
   documents: [] as DocInfo[],
@@ -131,6 +132,13 @@ const state = reactive({
   taskStep: "prompt" as "prompt" | "review-docs" | "generating" | "result",
   taskFoundDocs: [] as Array<{ document_id: string; title: string; score: number; snippet: string }>,
   taskSearching: false,
+  taskPromptScore: 0,
+  taskPromptLabel: "" as string,
+  taskPromptChecking: false,
+  taskLog: [] as string[],
+  taskSavedHistory: [] as Array<{ id: string; prompt: string; result: string; docIds: string[]; timestamp: string }>,
+  taskHistoryMax: 5,
+  taskShowHistory: false,
 
   // Gap-to-Email
   gapFormDocId: "" as string,
@@ -148,6 +156,7 @@ const state = reactive({
   gapNewVendorContact: "",
   gapNewVendorDocs: [] as string[],
   gapNewVendorNotes: "",
+  gapLog: [] as string[],
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -512,6 +521,9 @@ async function runTask(refinement?: string) {
   state.taskLoading = true;
   (state as any).taskStatus = "";
   const prompt = refinement || state.taskPrompt;
+  state.taskLog.push(`prompt: "${prompt.slice(0, 80)}${prompt.length > 80 ? "..." : ""}"`);
+  state.taskLog.push(`documents: ${state.taskDocIds.length} selected`);
+  state.taskLog.push(`calling /tasks/generate (skip_auto_search: true)...`);
   try {
     const resp = await fetch(`${apiBase}/tasks/generate`, {
       method: "POST",
@@ -537,12 +549,14 @@ async function runTask(refinement?: string) {
         if (line.startsWith("data: ")) {
           try {
             const data = JSON.parse(line.slice(6));
-            if (data.status) (state as any).taskStatus = data.status;
+            if (data.status) { (state as any).taskStatus = data.status; state.taskLog.push(data.status); }
             if (data.error) { state.taskResult = `Error: ${data.error}`; state.taskStep = "result"; }
             if (data.result) {
               state.taskResult = data.result.markdown;
               state.taskHistory = data.result.history || [];
               state.taskStep = "result";
+              state.taskLog.push(`done: ${data.result.markdown.length} chars generated`);
+              saveTaskToHistory();
             }
           } catch { /* ignore parse errors */ }
         }
@@ -565,6 +579,126 @@ function resetTask() {
   state.taskRefinement = "";
   state.taskStep = "prompt";
   state.taskFoundDocs = [];
+  state.taskPromptScore = 0;
+  state.taskPromptLabel = "";
+}
+
+// Task history persistence
+function loadTaskHistory() {
+  try {
+    const saved = localStorage.getItem("taskHistory");
+    if (saved) state.taskSavedHistory = JSON.parse(saved);
+    const max = localStorage.getItem("taskHistoryMax");
+    if (max) state.taskHistoryMax = parseInt(max, 10) || 5;
+  } catch { /* ignore */ }
+}
+
+function saveTaskToHistory() {
+  if (!state.taskPrompt.trim() || !state.taskResult.trim()) return;
+  const entry = {
+    id: Date.now().toString(36),
+    prompt: state.taskPrompt,
+    result: state.taskResult,
+    docIds: [...state.taskDocIds],
+    timestamp: new Date().toISOString(),
+  };
+  state.taskSavedHistory.unshift(entry);
+  // Trim to max
+  if (state.taskSavedHistory.length > state.taskHistoryMax) {
+    state.taskSavedHistory = state.taskSavedHistory.slice(0, state.taskHistoryMax);
+  }
+  localStorage.setItem("taskHistory", JSON.stringify(state.taskSavedHistory));
+}
+
+function loadTaskFromHistory(entry: any) {
+  state.taskPrompt = entry.prompt;
+  state.taskResult = entry.result;
+  state.taskDocIds = entry.docIds || [];
+  state.taskHistory = [];
+  state.taskStep = "result";
+  state.taskShowHistory = false;
+}
+
+function deleteTaskHistoryEntry(id: string) {
+  state.taskSavedHistory = state.taskSavedHistory.filter((e: any) => e.id !== id);
+  localStorage.setItem("taskHistory", JSON.stringify(state.taskSavedHistory));
+}
+
+function clearAllTaskHistory() {
+  if (confirm("Clear all task history? This cannot be undone.")) {
+    state.taskSavedHistory = [];
+    localStorage.removeItem("taskHistory");
+  }
+}
+
+function setTaskHistoryMax(n: number) {
+  state.taskHistoryMax = n;
+  localStorage.setItem("taskHistoryMax", String(n));
+  if (state.taskSavedHistory.length > n) {
+    state.taskSavedHistory = state.taskSavedHistory.slice(0, n);
+    localStorage.setItem("taskHistory", JSON.stringify(state.taskSavedHistory));
+  }
+}
+
+loadTaskHistory();
+
+// Workflow log widget renderer
+function renderLog(log: string[]) {
+  if (!log.length) return null;
+  return h("details", { style: "margin-top:8px;margin-bottom:8px" }, [
+    h("summary", { style: "font-size:.7rem;color:#6b7280;cursor:pointer;user-select:none" }, `⟩ Workflow Log (${log.length} steps)`),
+    h("div", { style: "max-height:150px;overflow-y:auto;background:#111827;border-radius:4px;padding:6px;margin-top:4px;font-family:monospace;font-size:.68rem;line-height:1.5" },
+      log.map((entry: string) => h("div", { style: "color:#a3e635" }, `$ ${entry}`))
+    ),
+  ]);
+}
+
+// Debounced prompt quality scoring via search
+let _promptScoreTimer: ReturnType<typeof setTimeout> | null = null;
+function scorePrompt(text: string) {
+  if (_promptScoreTimer) clearTimeout(_promptScoreTimer);
+  const wordCount = text.trim().split(/\s+/).filter((w: string) => w.length > 0).length;
+  if (wordCount < 1) {
+    state.taskPromptScore = 0;
+    state.taskPromptLabel = "";
+    state.taskPromptChecking = false;
+    return;
+  }
+  if (wordCount < 3) {
+    // Show meter immediately at 0 with hint to keep typing
+    state.taskPromptScore = 0;
+    state.taskPromptLabel = "Keep typing...";
+    state.taskPromptChecking = false;
+    return;
+  }
+  state.taskPromptChecking = true;
+  _promptScoreTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`${apiBase}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: text, mode: "hybrid", page: 1, page_size: 8 }),
+      });
+      const data = await res.json();
+      const results = data.results || [];
+      const uniqueDocs = new Set(results.map((r: any) => r.document_id));
+      const topScore = results.length > 0 ? results[0].score : 0;
+
+      let score = 0;
+      if (wordCount >= 3) score = 1;
+      if (wordCount >= 6 && topScore > 40) score = 2;
+      if (wordCount >= 8 && topScore > 60) score = 3;
+      if (wordCount >= 10 && topScore > 80 && uniqueDocs.size >= 3) score = 4;
+      if (wordCount >= 12 && topScore > 100 && uniqueDocs.size >= 3) score = 5;
+
+      const labels = ["Keep typing...", "Vague — keep going", "Weak — add more detail", "Fair", "Good", "Specific"];
+      state.taskPromptScore = score;
+      state.taskPromptLabel = labels[score] || "";
+    } catch {
+      state.taskPromptLabel = "";
+    }
+    state.taskPromptChecking = false;
+  }, 500);
 }
 
 function checkModelWarnings() {
@@ -656,11 +790,14 @@ async function submit() {
   state.results = [];
   state.answer = "";
   state.citations = [];
+  state.askLog = [];
 
   const start = performance.now();
 
   try {
     if (state.mode === "search") {
+      state.askLog.push(`search: "${state.query.slice(0, 60)}"`);
+      state.askLog.push("hybrid search (BM25 + kNN)...");
       const res = await fetch(`${apiBase}/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -669,8 +806,13 @@ async function submit() {
       if (!res.ok) { state.searchError = `Search failed (${res.status})`; return; }
       const data = await res.json();
       state.results = data.results || [];
+      state.askLog.push(`results: ${state.results.length} chunks found`);
       if (state.results.length === 0) state.searchError = "No results found. Try different keywords.";
     } else {
+      state.askLog.push(`ask: "${state.query.slice(0, 60)}"`);
+      state.askLog.push("query expansion (Nova Micro)...");
+      state.askLog.push("dual search (expanded + original)...");
+      state.askLog.push("context assembly + Bedrock generation...");
       const res = await fetch(`${apiBase}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -680,11 +822,14 @@ async function submit() {
       const data = await res.json();
       state.answer = data.answer || "";
       state.citations = data.citations || [];
+      if (data.expanded_query) state.askLog.push(`expanded: "${data.expanded_query.slice(0, 80)}"`);
+      state.askLog.push(`answer: ${state.answer.length} chars, ${state.citations.length} citations`);
     }
   } catch (e: any) {
     state.searchError = `Error: ${e.message || "Could not reach server"}`;
   } finally {
     state.searchTime = Math.round(performance.now() - start);
+    state.askLog.push(`completed in ${state.searchTime}ms`);
     state.searchLoading = false;
   }
 }
@@ -955,22 +1100,73 @@ createApp({
               ? h("div", { class: "create-panel" }, [
                   h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
                     h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Task Workflow"),
-                    state.taskStep !== "prompt"
-                      ? h("button", { class: "btn btn-sm btn-outline", onClick: resetTask }, "New Task")
-                      : null,
+                    h("div", { style: "display:flex;gap:6px" }, [
+                      state.taskSavedHistory.length > 0
+                        ? h("button", { class: "btn btn-sm btn-outline", onClick: () => { state.taskShowHistory = !state.taskShowHistory; } }, `📋 History (${state.taskSavedHistory.length})`)
+                        : null,
+                      state.taskStep !== "prompt"
+                        ? h("button", { class: "btn btn-sm btn-outline", onClick: resetTask }, "New Task")
+                        : null,
+                    ]),
                   ]),
+
+                  // Task history panel
+                  state.taskShowHistory
+                    ? h("div", { style: "margin-bottom:12px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#f9fafb" }, [
+                        h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:8px" }, [
+                          h("span", { style: "font-size:.75rem;color:#6b7280" }, "Previous Tasks"),
+                          state.taskSavedHistory.length > 0
+                            ? h("button", { style: "font-size:.7rem;color:#ef4444;background:none;border:none;cursor:pointer", onClick: clearAllTaskHistory }, "Clear All")
+                            : null,
+                        ]),
+                        ...state.taskSavedHistory.map((entry: any) =>
+                          h("div", { style: "display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #e5e7eb;cursor:pointer", onClick: () => loadTaskFromHistory(entry) }, [
+                            h("div", { style: "flex:1;min-width:0" }, [
+                              h("div", { style: "font-size:.78rem;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, entry.prompt),
+                              h("div", { style: "font-size:.65rem;color:#9ca3af" }, new Date(entry.timestamp).toLocaleString()),
+                            ]),
+                            h("button", {
+                              style: "color:#9ca3af;background:none;border:none;cursor:pointer;font-size:.8rem;padding:2px 4px",
+                              onClick: (e: Event) => { e.stopPropagation(); deleteTaskHistoryEntry(entry.id); },
+                            }, "×"),
+                          ])
+                        ),
+                        state.taskSavedHistory.length === 0
+                          ? h("div", { style: "font-size:.75rem;color:#9ca3af;text-align:center;padding:8px" }, "No history yet")
+                          : null,
+                      ])
+                    : null,
 
                   // Step 1: Prompt
                   state.taskStep === "prompt"
                     ? h("div", [
-                        h("textarea", { class: "create-textarea", placeholder: "Describe what you need (e.g., 'Write a description of proposed modification for the exterior modification form using American Home Contractors documents')...", value: state.taskPrompt, onInput: (e: any) => (state.taskPrompt = e.target.value), style: "min-height:100px" }),
+                        h("textarea", { class: "create-textarea", placeholder: "Describe what you need (e.g., 'Write a description of proposed modification for the exterior modification form using American Home Contractors documents')...", value: state.taskPrompt, onInput: (e: any) => { state.taskPrompt = e.target.value; scorePrompt(e.target.value); }, style: "min-height:100px" }),
+                        // Prompt quality meter
+                        state.taskPrompt.trim().length > 0
+                          ? h("div", { style: "display:flex;align-items:center;gap:8px;margin-top:6px;margin-bottom:6px" }, [
+                              h("div", { style: "display:flex;gap:2px" },
+                                [1, 2, 3, 4, 5].map((i: number) => {
+                                  const active = i <= state.taskPromptScore;
+                                  const colors = ["", "#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e"];
+                                  const bg = active ? colors[state.taskPromptScore] : "#374151";
+                                  return h("div", { style: `width:24px;height:6px;border-radius:2px;background:${bg};transition:background 0.3s` });
+                                })
+                              ),
+                              state.taskPromptChecking
+                                ? h("span", { style: "font-size:.7rem;color:#6b7280" }, "Checking...")
+                                : h("span", { style: `font-size:.7rem;color:${state.taskPromptScore >= 4 ? "#22c55e" : state.taskPromptScore >= 3 ? "#eab308" : "#9ca3af"}` }, state.taskPromptLabel),
+                            ])
+                          : null,
                         h("button", {
                           class: "btn btn-primary", style: "margin-top:8px",
                           disabled: state.taskSearching || !state.taskPrompt.trim(),
                           onClick: async () => {
                             state.taskSearching = true;
+                            state.taskLog = [];
+                            state.taskLog.push(`search: "${state.taskPrompt.slice(0, 60)}..."`);
                             try {
                               // Primary search on the full prompt
+                              state.taskLog.push("hybrid search (BM25 + kNN)...");
                               const res = await fetch(`${apiBase}/search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.taskPrompt, mode: "hybrid", page: 1, page_size: 20 }) });
                               const data = await res.json();
                               const results = data.results || [];
@@ -983,9 +1179,11 @@ createApp({
                                 }
                               }
                               // Extract capitalized entity names for follow-up searches
+                              state.taskLog.push(`primary search: ${found.length} unique docs`);
                               const entityMatch = state.taskPrompt.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g);
                               const searches: string[] = [];
                               if (entityMatch) {
+                                state.taskLog.push(`entities found: ${entityMatch.join(", ")}`);
                                 for (const entity of entityMatch) {
                                   searches.push(entity);
                                   searches.push(`${entity} email correspondence reply`);
@@ -998,12 +1196,42 @@ createApp({
                                 const res2 = await fetch(`${apiBase}/search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q, mode: "hybrid", page: 1, page_size: 15 }) });
                                 const data2 = await res2.json();
                                 for (const r of (data2.results || [])) {
-                                  if (!seen.has(r.document_id)) {
+                                  if (!seen.has(r.document_id) && r.score >= 25) {
                                     seen.add(r.document_id);
                                     found.push({ document_id: r.document_id, title: r.title, score: r.score, snippet: (r.snippet || "").replace(/<\/?em>/g, "") });
                                   }
                                 }
                               }
+                              // Refine: rerank + LLM classify to remove noise
+                              state.taskLog.push(`refine: decompose prompt + Cohere Rerank (${found.length} candidates)...`);
+                              try {
+                                const refRes = await fetch(`${apiBase}/search/refine`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ query: state.taskPrompt, candidates: found, top_k: 10 }),
+                                });
+                                const refData = await refRes.json();
+                                if (refData.results && refData.results.length > 0) {
+                                  state.taskLog.push(`refined: ${found.length} → ${refData.results.length} docs`);
+                                  found.length = 0;
+                                  found.push(...refData.results);
+                                }
+                              } catch { state.taskLog.push("refine: failed, using unrefined list"); }
+                              // Auto-include form/application docs if prompt implies a form but none found
+                              const promptLower = state.taskPrompt.toLowerCase();
+                              const hasFormIntent = /(form|application|fill out|fill in|submit)/.test(promptLower);
+                              const hasFormDoc = found.some((d: any) => (d.title || "").toLowerCase().includes("application") || (d.title || "").toLowerCase().includes("form"));
+                              if (hasFormIntent && !hasFormDoc) {
+                                state.taskLog.push("auto-include: form document (prompt implies form)");
+                                const formDocs = state.documents.filter((d: any) =>
+                                  (d.document_type === "application" || (d.title || "").toLowerCase().includes("application"))
+                                  && !found.some((f: any) => f.document_id === d.document_id)
+                                );
+                                for (const fd of formDocs.slice(0, 2)) {
+                                  found.push({ document_id: fd.document_id, title: fd.title || fd.original_filename, score: 0, snippet: "(auto-included: form document)" });
+                                }
+                              }
+                              state.taskLog.push(`result: ${found.length} documents ready for review`);
                               state.taskFoundDocs = found;
                               state.taskDocIds = found.map((d: any) => d.document_id);
                               state.taskStep = "review-docs";
@@ -1019,10 +1247,11 @@ createApp({
                   // Step 2: Review found documents
                   state.taskStep === "review-docs"
                     ? h("div", [
+                        renderLog(state.taskLog),
                         h("div", { style: "font-size:.8rem;color:#9ca3af;margin-bottom:8px" }, `Found ${state.taskFoundDocs.length} documents. Select which to use:`),
                         h("div", { style: "max-height:250px;overflow-y:auto;border:1px solid #374151;border-radius:6px;padding:6px;margin-bottom:10px" },
                           state.taskFoundDocs.map((d: any) =>
-                            h("label", { style: "display:flex;align-items:flex-start;gap:8px;padding:6px;font-size:.8rem;cursor:pointer;color:#d1d5db;border-bottom:1px solid #1f2937;position:relative" }, [
+                            h("label", { style: "display:flex;align-items:flex-start;gap:8px;padding:6px;font-size:.8rem;cursor:pointer;color:#111827;border-bottom:1px solid #e5e7eb;position:relative" }, [
                               h("input", {
                                 type: "checkbox",
                                 style: "margin-top:2px",
@@ -1067,6 +1296,7 @@ createApp({
                   // Step 4: Result + refinement
                   state.taskStep === "result"
                     ? h("div", [
+                        renderLog(state.taskLog),
                         h("div", { style: "border:1px solid #374151;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap;background:#111827;color:#d1d5db;margin-bottom:10px" }, state.taskResult),
                         h("div", { style: "display:flex;gap:8px;align-items:flex-end" }, [
                           h("textarea", { class: "create-textarea", placeholder: "Refine: e.g. 'Make it first person' or 'Add the plywood note'", value: state.taskRefinement, onInput: (e: any) => (state.taskRefinement = e.target.value), style: "min-height:60px;flex:1" }),
@@ -1078,9 +1308,9 @@ createApp({
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "docx" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.docx"; a.click(); } }, "📥 DOCX"),
                           h("button", { class: "btn btn-sm btn-outline", onClick: () => { const b = new Blob([state.taskResult], { type: "text/markdown" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.md"; a.click(); } }, "📥 Markdown"),
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => {
-                            const r = await fetch(`${apiBase}/generate/export-package`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, document_ids: state.taskDocIds, filename_prefix: "submission_package" }) });
+                            const r = await fetch(`${apiBase}/generate/export-package`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, document_ids: state.taskDocIds, prompt: state.taskPrompt, filename_prefix: "task_package" }) });
                             const data = await r.json();
-                            if (data.file_b64) { const bytes = Uint8Array.from(atob(data.file_b64), c => c.charCodeAt(0)); const blob = new Blob([bytes], { type: "application/zip" }); const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = data.filename || "submission_package.zip"; a.click(); }
+                            if (data.file_b64) { const bytes = Uint8Array.from(atob(data.file_b64), c => c.charCodeAt(0)); const blob = new Blob([bytes], { type: "application/zip" }); const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = data.filename || "task_package.zip"; a.click(); }
                           } }, "📦 Package (ZIP)"),
                         ]),
                         h("div", { style: "font-size:.7rem;color:#9ca3af;margin-top:8px" }, `${Math.floor(state.taskHistory.length / 2)} iteration(s)`),
@@ -1592,6 +1822,12 @@ createApp({
                       state.gapLoading = true;
                       state.gapError = "";
                       state.gapResults = [];
+                      state.gapLog = [];
+                      state.gapLog.push(`form: ${state.gapFormDocId}`);
+                      state.gapLog.push(`vendors: ${state.gapVendors.length}`);
+                      state.gapLog.push("calling /gap-to-email...");
+                      state.gapLog.push("auto-discovering context documents...");
+                      state.gapLog.push("analyzing gaps per vendor...");
                       try {
                         const res = await fetch(`${apiBase}/gap-to-email`, {
                           method: "POST",
@@ -1606,6 +1842,7 @@ createApp({
                         if (!res.ok) throw new Error(await res.text());
                         const data = await res.json();
                         state.gapResults = data.results || [];
+                        state.gapLog.push(`done: ${state.gapResults.length} vendor emails generated`);
                       } catch (e: any) {
                         state.gapError = e.message || "Failed to generate emails";
                       } finally {
@@ -1616,6 +1853,9 @@ createApp({
 
                   // Error
                   state.gapError ? h("div", { style: "color:#ef4444;font-size:.8rem;margin-bottom:12px" }, state.gapError) : null,
+
+                  // Workflow log
+                  state.gapLog.length > 0 ? renderLog(state.gapLog) : null,
 
                   // Results
                   ...state.gapResults.map((r: any) =>
@@ -1921,6 +2161,18 @@ createApp({
                     ]) : null,
                   ]),
 
+                  // Task History settings
+                  h("div", { class: "collapsible", style: "margin-top:8px" }, [
+                    h("div", { style: "display:flex;align-items:center;gap:8px;padding:6px 0" }, [
+                      h("label", { style: "font-size:.78rem;color:#6b7280" }, "Task History (max saved):"),
+                      h("select", {
+                        style: "padding:2px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:.78rem",
+                        value: state.taskHistoryMax,
+                        onChange: (e: Event) => { setTaskHistoryMax(parseInt((e.target as HTMLSelectElement).value, 10)); },
+                      }, [5, 10, 15, 25, 50].map(n => h("option", { value: n }, String(n)))),
+                    ]),
+                  ]),
+
                   // Usage section (collapsible)
                   h("div", { class: "collapsible" }, [
                     h("div", {
@@ -2057,6 +2309,7 @@ createApp({
                 state.answer
                   ? h("div", { class: "answer-box" }, state.answer)
                   : null,
+                state.askLog.length > 0 ? renderLog(state.askLog) : null,
                 ...(state.mode === "ask" ? state.citations : state.results).map((r: any, idx: number) => {
                   const citKey = `cite_${idx}`;
                   const isOpen = (state as any)[citKey];

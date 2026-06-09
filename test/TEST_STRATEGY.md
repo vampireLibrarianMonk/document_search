@@ -1238,3 +1238,182 @@ def score_theme_test(filled_bytes, prompt, template_type):
 | **Total** | **11** | **12** | **30** | **53 prompts** |
 
 Full test matrix: 53 prompts × 7 models = **371 fill operations** (run as nightly/weekly, not on every commit).
+
+
+---
+
+## 5. Form Fill Gambit (Task Workflow Benchmark)
+
+**File:** `tests/gambit_form_fill.py`
+**Results:** `test/results/form_fill_gambit/`
+
+### Purpose
+
+Tests the Task Workflow's ability to generate accurate, hallucination-free form field content by varying three axes simultaneously:
+1. **Model** — which LLM produces the most factually grounded output
+2. **Document set** — which combination of documents yields the best signal-to-noise ratio
+3. **Prompt complexity** — how much instruction the user needs to provide
+
+### Ground Truth
+
+Reference output: `tmp/ahc_hoa_submission/description_of_proposed_modification.txt`
+
+Required facts (regex-verified): `$7,200` | `750 sq ft` | `black` | `1 day` | `VA #2705190396` | `LIBERTY SBS`
+
+### Test Matrix
+
+| Axis | Variants |
+|------|----------|
+| Models | Nova Pro, Nova Lite, Claude Haiku 3, Claude Sonnet 3, Mistral Large, Magistral Small, Llama 70B, Qwen 32B, DeepSeek v3, Nemotron Super |
+| Doc Sets | focused_5 (AHC+form), focused_no_form (AHC only), with_arb_standards (+ARB), kitchen_sink (all roof docs) |
+| Prompts | minimal (vendor name only), medium (+system/format), detailed (all facts specified) |
+
+**Total: 10 models × 4 doc sets × 3 prompts = 120 combinations**
+
+### Scoring
+
+Each output is judged by Nova Pro on a 100-point scale:
+- **Factual Accuracy** /25 — correct price, dimensions, timeline, materials, license, color
+- **Hallucination Rate** /25 — 25 = no hallucinations; deduct for invented details
+- **Format Compliance** /25 — flowing paragraphs, first person, no markdown headers/bullets
+- **Completeness** /25 — covers dimensions, materials, color, timeline, cost, contractor info
+
+Plus a hard fact check (6 required facts via regex).
+
+### Key Results (2026-06-07)
+
+**Top performers (100/100):**
+| Model | Doc Set | Prompt | Facts | Time |
+|-------|---------|--------|-------|------|
+| Mistral Large | kitchen_sink | detailed | 6/6 | 7.8s |
+| DeepSeek v3 | with_arb_standards | minimal | 3/6 | 32.7s |
+| Nemotron Super | focused_no_form | detailed | 6/6 | 2.7s |
+| Nemotron Super | with_arb_standards | detailed | 6/6 | 3.0s |
+
+**Best model (averaged):** Nemotron Super — 89.3/100 avg across all combos
+**Fastest reliable:** Nova Pro — 95/100 in 2.2s (detailed prompt, focused_5 docs)
+**Best minimal-prompt:** DeepSeek v3 — 100/100 with just the vendor name (but 32.7s)
+
+### Findings
+
+1. **Prompt matters most:** detailed (88.7 avg) >> minimal (74.9) > medium (71.2)
+2. **Document set barely matters with detailed prompt:** focused_5 (79.1) ≈ kitchen_sink (78.5)
+3. **Document set matters a lot with minimal prompt:** models hallucinate without guidance
+4. **ARB Standards don't hurt with good models** but cause hallucination in weaker ones (Jogging Path, Englert Egg Shell color bleed)
+5. **The "medium" prompt underperformed minimal** — partially specifying format confused some models more than saying nothing
+
+### Recommendations (applied to app)
+
+- **Default task model:** Nemotron Super (best avg score, fast)
+- **Form detection:** When a form/application document is in selected docs, inject "write flowing paragraphs, first person, facts only" into system prompt automatically
+- **Skip auto-search:** When user curates docs in review step, don't add more (implemented via `skip_auto_search` flag)
+- **Initials search:** Entity extraction + abbreviation search needed to find all vendor correspondence
+
+### Running
+
+```bash
+source .venv/bin/activate
+python tests/gambit_form_fill.py
+```
+
+Outputs to `test/results/form_fill_gambit/`:
+- `summary.md` — rankings and recommendations
+- `all_results.json` — raw scores for all 120 combos
+- `{model}_{docset}_{prompt}.txt` — each generated output
+
+
+---
+
+## 6. Retrieval + Generation E2E Gambit
+
+**File:** `tests/gambit_retrieval_e2e.py`
+**Results:** `test/results/retrieval_e2e_gambit/`
+
+### Purpose
+
+Tests the complete Tasks tab pipeline end-to-end: given ONLY a typed prompt (no pre-selected documents), does the app successfully find the right documents via embedding search AND produce accurate content?
+
+Unlike the Form Fill Gambit (which tests generation in isolation with pre-selected docs), this tests the full chain: hybrid search → entity extraction → initials search → chunk-level retrieval → form detection → generation.
+
+### What It Measures
+
+- **Retrieval recall**: Did it find the 5 required documents?
+- **Retrieval precision**: How much noise (wrong-vendor docs) crept in?
+- **Generation facts**: Did the output contain the 6 required facts?
+- **End-to-end time**: Search + generation combined
+
+### Prompt Variations
+
+| Name | Prompt | Tests |
+|------|--------|-------|
+| natural | "Fill out the description of proposed modification for the exterior modification form using American Home Contractors" | Standard user phrasing |
+| with_system | Adds "GAF LIBERTY SBS system" | Specificity helps? |
+| conversational | "I need to fill out my HOA form..." | Casual phrasing |
+| minimal | "American Home Contractors roof replacement HOA application" | Keywords only |
+| detailed | Full instructions with all expected facts listed | Maximum guidance |
+
+### Key Results (2026-06-08, Round 2)
+
+After implementing chunk-level retrieval + form-aware system prompt:
+
+- **34-46x speed improvement** (3-11s vs 140-275s previously)
+- **Best combo**: `detailed` prompt → 5/5 docs, 5/6 facts, 8.2s
+- **Retrieval always finds vendor docs** (5/5 prompts find all AHC documents)
+- **Form document requires explicit mention** in prompt (found 3/5 times)
+
+### Fixes Validated
+
+1. `search_chunks_grouped()` — targeted chunk retrieval reduces 136K → 27K chars context
+2. Form-aware system prompt — auto-detects `document_type: "application"` and switches to plain-paragraph mode
+3. `skip_auto_search` — prevents structured pipeline from triggering on user-curated doc lists
+
+### Running
+
+```bash
+source .venv/bin/activate
+python tests/gambit_retrieval_e2e.py
+```
+
+
+---
+
+## 7. Refinement Pipeline Gambit
+
+**File:** Inline test in conversation (to be extracted to `tests/gambit_refinement.py`)
+**Results:** `tests/results/retrieval_e2e_gambit/IMPROVEMENT_JOURNEY.md`
+
+### Purpose
+
+Tests whether prompt decomposition + Cohere Rerank improves document selection quality and downstream generation accuracy compared to raw search results.
+
+### What Changed
+
+The `/search/refine` endpoint implements:
+1. **Prompt decomposition** (Nova Micro, ~0.3s) — extracts `{action, target_document, vendor, product, subject}` from the user's prompt
+2. **Entity matching** — tags candidates where vendor/product appears in title or snippet
+3. **Cohere Rerank** (v3.5, ~0.5s) — rescores using `vendor + product + subject` as the query (content-focused, not administrative)
+4. **Score cutoff** — removes docs below 8% of top rerank score, keeps entity matches regardless
+
+### Key Findings
+
+- Refinement helps most with detailed/minimal prompts (4/6 → 6/6 facts for minimal)
+- Reduces noise consistently (11 → 7-8 docs)
+- Never hurts recall (required docs always preserved)
+- Content-focused rerank query (stripping "fill out" / "write" verbs) scores vendor docs higher
+- One prompt regressed (non-deterministic — model variance, not pipeline issue)
+
+### Form Detection + Post-Processing
+
+When a form/application document is in the selected set:
+- System prompt switches to plain-paragraph mode
+- User message reinforces "no markdown"
+- Post-processing uses Nova Micro to split wall-of-text at topic transitions (abstract, domain-agnostic)
+
+### Running
+
+The refinement is integrated into the live Tasks tab. To test independently:
+```bash
+curl -X POST https://api.localhost/search/refine \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "your prompt here", "candidates": [...], "top_k": 10}'
+```

@@ -49,6 +49,17 @@ make build       # Rebuild images without starting
 4. Pick output format (Markdown, Word, PDF, Image, PowerPoint)
 5. Click Generate, then Preview or Download
 
+## Tasks (Guided Generation)
+
+1. Switch to "🧠 Tasks" tab
+2. Type your prompt — a quality meter shows how specific it is
+3. Click "Find Documents" — auto-discovers relevant documents
+4. Review found documents (with relevance snippets) — check/uncheck as needed
+5. Click "Generate" — produces content from selected documents only
+6. Refine with follow-up instructions if needed
+7. Export as PDF, DOCX, Markdown, or ZIP package (includes source files with relevance notes)
+8. Previous tasks are saved — click "📋 History" to reload and continue refining
+
 ## Gap-to-Email
 
 1. Switch to "📧 Gap-to-Email" tab

@@ -51,6 +51,7 @@ Click the "Settings" tab to access:
 - **Service Health**: connectivity status and version info for all services (AWS, Postgres, OpenSearch, BookStack, Confluence)
 - **Configuration**: select your Ask AI, Create Document, and Vision OCR models (with cost/speed labels), set AWS region, configure BookStack and Confluence credentials, toggle usage tracking, set upload concurrency
 - **Token Usage & Cost**: track API calls, token counts, and estimated costs per model and per day. Pricing is pulled live from the AWS bulk pricing JSON
+- **Task History**: set how many previous task prompts/results to keep (default: 5)
 
 ### How Documents Are Processed
 
@@ -120,7 +121,7 @@ Click the "Create" tab to generate new documents from your indexed content.
 
 - The app searches your indexed documents for relevant content
 - Sends that content plus your request to the selected generation model (configurable in Settings)
-- Bedrock writes the document grounded in your actual house documents
+- Bedrock writes the document grounded in your actual documents
 - The markdown is converted to your chosen format locally (no additional API calls)
 - Form requests are auto-detected and generate proper form fields with blanks, checkboxes, and signature lines
 
@@ -130,12 +131,75 @@ Six separate models can be configured in Settings:
 
 - **Ask AI Model** — For quick Q&A answers (default: Qwen3 32B — fastest high-accuracy model, 0.58s)
 - **Create Document Model** — For document/template generation (default: Amazon Nova Pro — highest quality 59/60, fast)
+- **Task Model** — For the Tasks tab guided generation (default: NVIDIA Nemotron Super — 100/100 gambit score, 2.7s)
 - **Template Extraction Model** — For analyzing template structure on import (default: Mistral Magistral Small — best field/section detection)
 - **Vision OCR Model** — For reading scanned pages and images (default: Mistral Ministral 3B — perfect accuracy, fastest at 0.49s)
 - **Format Detection Model** — For detecting output format from prompts (default: Llama 3 8B — fastest at 194ms, perfect cleanliness)
 - **Embedding Model** — For generating vector embeddings at index and search time (default: Amazon Titan Embed Text v2 — 1024 dimensions, ~$0.0001/chunk)
 
 Models from 11+ families are supported: Anthropic, Amazon, NVIDIA, Mistral, DeepSeek, Meta, Google, AI21, Qwen, Z.AI, and OpenAI (GPT-OSS). Each model in Settings shows descriptive tags like `[$ cheapest · fast]` or `[$$ balanced · best for document generation]`.
+
+## Tasks
+
+Click the "🧠 Tasks" tab for the guided document generation workflow.
+
+### How It Works
+
+1. **Type your prompt** — describe what you need (e.g., "Fill out the description of proposed modification for the exterior modification form using American Home Contractors GAF LIBERTY SBS system")
+2. **Prompt quality meter** — as you type, a live meter shows how well your prompt connects to indexed documents (uses embedding search to score in real time)
+3. **Click "Find Documents"** — the app searches using hybrid BM25+kNN, extracts entity names, searches abbreviations, then refines results with Cohere Rerank and prompt decomposition
+4. **Review documents** — see what was found with relevance snippets. Check/uncheck to curate your source set
+5. **Generate** — produces content using only the selected documents (chunk-level retrieval for precision, no bloat)
+6. **Refine** — type follow-up instructions to iterate on the output
+7. **Export** — download as PDF, DOCX, Markdown, or ZIP package (includes source PDFs)
+
+### Document Discovery Pipeline
+
+The "Find Documents" step uses a multi-phase approach:
+
+1. **Hybrid search** — BM25 keyword + kNN vector similarity on the full prompt
+2. **Entity extraction** — detects capitalized names (e.g., "American Home Contractors") and searches specifically for those
+3. **Abbreviation search** — generates initials (e.g., "AHC") and searches for correspondence
+4. **Prompt decomposition** — a fast model (Nova Micro) extracts structured intent: vendor, product, subject, target document
+5. **Cohere Rerank** — rescores all candidates using the content-subject (not the administrative action) as the query
+6. **Score cutoff** — removes low-relevance noise (below 8% of top score)
+7. **Auto-include forms** — if the prompt implies a form but none was found, application-type documents are added automatically
+
+### Form Detection
+
+When a document with type "application" or "form" is in the selected set, the system automatically:
+- Switches to plain-paragraph output (no markdown headers, bullets, or tables)
+- Requests all key facts: cost, materials, dimensions, timeline, contractor info, colors
+- Post-processes with a topic-transition model to split into natural paragraphs
+
+### Task Model
+
+Default: NVIDIA Nemotron Super (selected via gambit testing — 100/100 quality, 2.7s, all facts correct)
+
+### Task History
+
+Previous tasks are saved automatically (localStorage) so you can return to them later:
+- Click "📋 History" to see your past prompts and results
+- Click any entry to reload it and continue refining
+- Delete individual entries with "×" or clear all at once
+- Set how many to keep in Settings (default: 5)
+
+### Export Package
+
+The "📦 Package (ZIP)" export produces a structured archive:
+
+```
+task_package_2026-06-08-15-26.zip
+├── writeup.txt              (prompt + generated content + source citations)
+└── sources/
+    ├── 01_Document_Title/
+    │   ├── original_file.pdf
+    │   └── relevance.txt    (why this doc was pulled, matched chunks + scores)
+    ├── 02_Another_Document/
+    │   ├── original_file.txt
+    │   └── relevance.txt
+    └── ...
+```
 
 ## Gap-to-Email
 
@@ -275,7 +339,9 @@ Key endpoints:
 - `POST /ask` - Ask a question and get an AI answer with citations
 - `POST /generate` - Generate a document from a prompt (returns markdown)
 - `POST /generate/convert` - Convert markdown to DOCX, PDF, PNG, or PPTX
+- `POST /generate/export-package` - Export writeup + source PDFs as a ZIP
 - `POST /gap-to-email` - Analyze form requirements vs vendor docs, generate follow-up emails
+- `POST /search/refine` - Refine search candidates via prompt decomposition + Cohere Rerank
 - `GET /documents` - List all documents
 - `GET /documents/{id}` - Get a single document
 - `GET /documents/{id}/chunks` - Get a document's text chunks

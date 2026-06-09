@@ -552,6 +552,22 @@ def generate_document(body: dict):
 # -- Gap-to-Email Pipeline --
 
 
+@app.post("/search/refine")
+def search_refine(body: dict):
+    """Refine a list of candidate documents using reranking and LLM classification."""
+    from .search import refine_document_selection
+
+    query = body.get("query", "").strip()
+    candidates = body.get("candidates", [])
+    top_k = body.get("top_k", 10)
+
+    if not query or not candidates:
+        return {"results": candidates}
+
+    refined = refine_document_selection(query, candidates, top_k=top_k)
+    return {"results": refined}
+
+
 @app.post("/gap-to-email", response_model=GapEmailResponse)
 def gap_to_email(payload: GapEmailRequest):
     """Analyze a form's requirements against vendor documents and generate follow-up emails."""
@@ -629,7 +645,7 @@ def gap_to_email(payload: GapEmailRequest):
 
         already_have_text = "\n".join(f"  - {item}" for item in already_have) if already_have else "  (nothing specified)"
 
-        prompt = f"""You are helping a homeowner prepare follow-up emails to contractors.
+        prompt = f"""You are helping someone prepare follow-up emails to vendors/contractors.
 
 TASK: Analyze what a form/application requires, compare against what this vendor has already provided,
 identify the gaps, and write a follow-up email requesting the missing items.
@@ -656,12 +672,10 @@ INSTRUCTIONS:
 3. List the specific GAPS (items still needed)
 4. Write a follow-up email that:
    - Sounds like a continuation of an existing relationship (not a cold intro)
-   - Opens with: "I've been combing through my documents to make sure I have my p's and q's together in preparation for HOA approval"
    - Acknowledges what they already provided
    - Only asks for what's actually missing
-   - Mentions the homeowner will handle neighbor signatures
    - Is friendly, direct, and concise
-   - Signed by Patrick Flanigan, 12133 Tribune Street, Fairfax, VA 22033
+   - Signs off with the applicant's name and address (infer from documents if available)
 
 OUTPUT FORMAT (respond with EXACTLY this structure):
 GAPS:
@@ -673,7 +687,7 @@ EMAIL:
 Subject: ...
 (full email text)"""
 
-        system = [{"text": "You produce gap analyses and professional follow-up emails for homeowners."}]
+        system = [{"text": "You produce gap analyses and professional follow-up emails."}]
         messages = [{"role": "user", "content": [{"text": prompt}]}]
 
         resolved = model_id
@@ -812,19 +826,60 @@ async def task_generate(body: dict):
         yield f"data: {_json.dumps({'status': 'Gathering source documents...'})}\n\n"
         await asyncio.sleep(0)  # flush
 
-        # Build context from selected documents (full text, no truncation)
+        # Detect if any selected document is a form/application (adjusts generation style)
+        is_form_task = False
+        form_doc_titles = []
+        for doc_id in document_ids:
+            doc = store.get_document(doc_id)
+            if doc:
+                dtype = getattr(doc, 'document_type', '') or ''
+                title = getattr(doc, 'title', '') or ''
+                if dtype in ('application', 'form') or 'application' in title.lower() or 'form' in title.lower():
+                    is_form_task = True
+                    form_doc_titles.append(title)
+
+        # Build context from selected documents
         context_parts = []
         manual_count = 0
         seen_ids = set(document_ids)
-        for doc_id in document_ids:
-            doc = store.get_document(doc_id)
-            if not doc:
-                continue
-            chunks = store.get_chunks(doc_id)
-            if chunks:
-                text = "\n".join(c.content for c in chunks)
-                context_parts.append(f"[{doc.title}]\n{text}")
+
+        if skip_auto_search and document_ids:
+            # User curated their doc list — use chunk-level retrieval for precision
+            # Instead of loading entire documents, search for the most relevant chunks
+            yield f"data: {_json.dumps({'status': 'Retrieving relevant sections from selected documents...'})}\n\n"
+            await asyncio.sleep(0)
+
+            # Search within the selected documents for chunks relevant to the prompt
+            from .search import search_chunks_grouped
+            chunk_results = search_chunks_grouped(prompt, document_ids=document_ids, top_k=30)
+            for doc_id, chunks_text in chunk_results.items():
+                doc = store.get_document(doc_id)
+                title = doc.title if doc else doc_id
+                context_parts.append(f"[{title}]\n{chunks_text}")
                 manual_count += 1
+
+            # If chunk search returned nothing, fall back to full doc load
+            if not context_parts:
+                for doc_id in document_ids:
+                    doc = store.get_document(doc_id)
+                    if not doc:
+                        continue
+                    chunks = store.get_chunks(doc_id)
+                    if chunks:
+                        text = "\n".join(c.content for c in chunks)
+                        context_parts.append(f"[{doc.title}]\n{text}")
+                        manual_count += 1
+        else:
+            # Original behavior: load full documents
+            for doc_id in document_ids:
+                doc = store.get_document(doc_id)
+                if not doc:
+                    continue
+                chunks = store.get_chunks(doc_id)
+                if chunks:
+                    text = "\n".join(c.content for c in chunks)
+                    context_parts.append(f"[{doc.title}]\n{text}")
+                    manual_count += 1
 
         # Auto-search for additional relevant documents
         auto_parts = []
@@ -951,7 +1006,7 @@ async def task_generate(body: dict):
             "qwen": 100000,                  # 128k tokens
         }
 
-        single_model_id = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "") or "amazon.nova-pro-v1:0"
+        single_model_id = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "") or "nvidia.nemotron-super-3-120b"
         # Look up how much text the single-pass model can handle
         single_pass_limit = 80000  # safe default if model not in table
         for prefix, limit in _MODEL_CONTEXT_CHARS.items():
@@ -1008,6 +1063,22 @@ async def task_generate(body: dict):
             "Output well-structured Markdown. Include EVERY company, price, and entity found in the source data — never omit any."
         )
 
+        # Override system prompt for form-filling tasks
+        if is_form_task:
+            system_prompt = (
+                "You are writing content for a form field on behalf of the user. "
+                "Write in plain, simple English. Use complete sentences in flowing paragraphs. "
+                "Break the content into 2-3 short paragraphs for readability. "
+                "No bullet points, no headers, no tables, no numbered lists, no dashes, no markdown formatting. "
+                "First person. State facts directly from the provided documents. "
+                "Do NOT invent any facts. Do NOT use corporate or robotic language. "
+                "Write like a real person explaining a project simply and clearly. "
+                "ALWAYS include these details if they appear in the documents: "
+                "cost/pricing, materials and products, dimensions/measurements, "
+                "timeline (start date, completion time), contractor name and license number, "
+                "color specifications, and scope of work (what will be done step by step)."
+            )
+
         try:
             import boto3
             from botocore.config import Config as BotoConfig
@@ -1047,8 +1118,11 @@ async def task_generate(body: dict):
                 await asyncio.sleep(0)
 
                 def _stream_single():
+                    user_msg = f"Source documents:\n{context}\n\n---\n\nTask: {prompt}"
+                    if is_form_task:
+                        user_msg += "\n\nREMINDER: Output 2-3 short paragraphs separated by blank lines. No headers, no bullets, no markdown."
                     text, _ = _call_bedrock_stream(client, model_id, [{"text": system_prompt}],
-                        [{"role": "user", "content": [{"text": f"Source documents:\n{context}\n\n---\n\nTask: {prompt}"}]}])
+                        [{"role": "user", "content": [{"text": user_msg}]}])
                     return text
 
                 future = loop.run_in_executor(None, _stream_single)
@@ -1057,6 +1131,28 @@ async def task_generate(body: dict):
                     if not done:
                         yield ": keepalive\n\n"
                 markdown_content = future.result()
+
+                # Post-process: split wall-of-text into paragraphs for form tasks
+                if is_form_task and "\n\n" not in markdown_content and len(markdown_content) > 500:
+                    try:
+                        def _split_paragraphs(text=markdown_content):
+                            split_resp = client.converse(
+                                modelId="amazon.nova-micro-v1:0",
+                                messages=[{"role": "user", "content": [{"text":
+                                    "Insert paragraph breaks (blank lines) into this text where the topic naturally shifts. "
+                                    "Do not change any words. Return only the text with blank lines added.\n\n" + text
+                                }]}],
+                                inferenceConfig={"maxTokens": len(text) // 3},
+                            )
+                            return split_resp["output"]["message"]["content"][0]["text"]
+                        future = loop.run_in_executor(None, _split_paragraphs)
+                        done, _ = await asyncio.wait({future}, timeout=10)
+                        if done:
+                            result = future.result()
+                            if "\n\n" in result and len(result) > len(markdown_content) * 0.8:
+                                markdown_content = result
+                    except Exception:
+                        pass  # Keep original if splitting fails
 
             else:
                 # Structured pipeline: schema → extract → merge → generate
@@ -1261,43 +1357,83 @@ def generate_convert(body: dict):
 
 @app.post("/generate/export-package")
 def generate_export_package(body: dict):
-    """Export a writeup + associated source document files as a zip."""
+    """Export a writeup + associated source document files as a structured archive ZIP."""
     import base64
     import io
+    import re
     import zipfile
+    from datetime import datetime
 
     markdown = body.get("markdown", "").strip()
     document_ids = body.get("document_ids", [])
+    prompt = body.get("prompt", "")
     filename_prefix = body.get("filename_prefix", "submission")
 
     if not markdown:
         raise HTTPException(status_code=400, detail="No content to export")
 
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    archive_name = f"{filename_prefix}_{timestamp}"
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Write the text content
-        zf.writestr(f"{filename_prefix}.txt", markdown)
-
-        # Include source document files
-        for doc_id in document_ids:
+        # Write the main writeup with source citations
+        citations = ["\n\nSource Documents:\n"]
+        
+        for idx, doc_id in enumerate(document_ids, 1):
             doc = store.get_document(doc_id)
             if not doc:
                 continue
-            # Find the uploaded file on disk
+
+            title = doc.title or doc.original_filename or doc_id
+            # Clean title for filesystem
+            clean_name = re.sub(r"[^\w\s-]", "", title)
+            clean_name = re.sub(r"\s+", "_", clean_name.strip())[:60]
+            dir_name = f"{idx:02d}_{clean_name}"
+
+            # Find the source file
             source_url = doc.source_url or ""
-            # source_url is like /app/data/uploads/doc_xxx_filename.pdf
-            file_path = source_url.replace("/app/", "")
-            full_path = Path(file_path)
-            if not full_path.exists():
-                # Try data/uploads directory
-                full_path = Path("data/uploads") / full_path.name
-            if full_path.exists():
-                # Use a clean filename
-                original = doc.original_filename or full_path.name
-                zf.write(full_path, original)
+            file_path = Path(source_url.replace("/app/", ""))
+            if not file_path.exists():
+                file_path = Path("data/uploads") / file_path.name
+
+            # Copy original file into the archive
+            original_filename = doc.original_filename or file_path.name
+            if file_path.exists():
+                zf.write(file_path, f"sources/{dir_name}/{original_filename}")
+
+            # Build relevance summary
+            relevance_lines = [
+                f"Document: {title}",
+                f"Original filename: {original_filename}",
+                f"Type: {doc.document_type or 'unknown'}",
+                f"Category: {doc.category or 'unknown'}",
+                "",
+                "Why this document was included:",
+                "",
+            ]
+
+            # Search for matching chunks if we have a prompt
+            if prompt:
+                from .search import search_chunks
+                result = search_chunks(prompt, document_ids=[doc_id], page=1, page_size=3)
+                for i, r in enumerate(result.get("results", []), 1):
+                    snippet = r.get("snippet", "").replace("<em>", "").replace("</em>", "")
+                    relevance_lines.append(f"  Match {i} (score {r.get('score', 0):.1f}):")
+                    relevance_lines.append(f"    {snippet[:300]}")
+                    relevance_lines.append("")
+            if len(relevance_lines) == 7:  # No matches added
+                relevance_lines.append("  Included via entity match or form auto-detection.")
+
+            zf.writestr(f"sources/{dir_name}/relevance.txt", "\n".join(relevance_lines))
+            citations.append(f"  {idx}. {dir_name}/ — {title}")
+
+        # Write the writeup with prompt and citations appended
+        full_writeup = f"Prompt:\n{prompt}\n\n{'='*60}\n\nGenerated Content:\n\n{markdown}" + "\n".join(citations) + "\n"
+        zf.writestr("writeup.txt", full_writeup)
 
     buf.seek(0)
-    return {"file_b64": base64.b64encode(buf.read()).decode(), "filename": f"{filename_prefix}.zip"}
+    return {"file_b64": base64.b64encode(buf.read()).decode(), "filename": f"{archive_name}.zip"}
 
 
 # -- Admin --
@@ -2108,7 +2244,7 @@ def admin_get_config():
     vision_model = os.getenv("BEDROCK_VISION_MODEL_ID", "mistral.ministral-3-3b-instruct")
     gen_model = os.getenv("BEDROCK_GENERATE_MODEL_ID", "amazon.nova-pro-v1:0")
     task_model = os.getenv("BEDROCK_TASK_MODEL_ID", "amazon.nova-pro-v1:0")
-    task_single = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "amazon.nova-pro-v1:0")
+    task_single = os.getenv("BEDROCK_TASK_SINGLE_MODEL_ID", "nvidia.nemotron-super-3-120b")
     task_multi = os.getenv("BEDROCK_TASK_MULTI_MODEL_ID", "meta.llama3-3-70b-instruct-v1:0")
     detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
     template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", "mistral.magistral-small-2509")
