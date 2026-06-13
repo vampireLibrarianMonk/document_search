@@ -363,25 +363,76 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
                 search.results.append(r)
                 seen_chunks.add(r.chunk_id)
 
-    # Step 2: smart dedup - spread across documents first, then fill gaps
+    # Step 1b: if the question references personal property ("my address", "my lot", etc.),
+    # do a targeted search for property-identifying info (legal descriptions, lot numbers)
+    _PERSONAL_PATTERNS = re.compile(
+        r"\bmy\s+(address|property|lot|home|house|community|neighborhood|subdivision|parcel)\b",
+        re.IGNORECASE,
+    )
+    identity_results: list[SearchResult] = []
+    if _PERSONAL_PATTERNS.search(payload.question):
+        identity_search = run_search(
+            store,
+            SearchRequest(
+                query="legal description lot number property address parcel assessor",
+                mode="hybrid",
+                filters=payload.filters,
+                page=1,
+                page_size=20,
+            ),
+        )
+        seen_chunks = {r.chunk_id for r in search.results}
+        for r in identity_search.results:
+            if r.chunk_id not in seen_chunks:
+                search.results.append(r)
+                seen_chunks.add(r.chunk_id)
+            identity_results.append(r)
+
+    # Step 2: smart dedup - spread across documents first, then fill with additional high-scoring chunks
+    # Reserve up to 3 slots for identity-search results (property-identifying chunks)
+    reserved_identity: list[SearchResult] = []
+    if identity_results:
+        id_seen_docs: set[str] = set()
+        for r in identity_results:
+            if r.document_id not in id_seen_docs and len(reserved_identity) < 3:
+                id_seen_docs.add(r.document_id)
+                reserved_identity.append(r)
+
+    effective_top_k = payload.top_k - len(reserved_identity)
+
     seen_docs: dict[str, list[SearchResult]] = {}
     for r in search.results:
         seen_docs.setdefault(r.document_id, []).append(r)
 
     top: list[SearchResult] = []
+    # First pass: take the best chunk from each document (highest score)
     for doc_id, chunks in seen_docs.items():
+        chunks.sort(key=lambda r: r.score, reverse=True)
         top.append(chunks[0])
     top.sort(key=lambda r: r.score, reverse=True)
-    top = top[: payload.top_k]
+    top = top[: effective_top_k]
 
-    if len(top) < payload.top_k:
+    # Second pass: fill remaining slots with next-best chunks from already-selected docs
+    if len(top) < effective_top_k:
         used = {r.chunk_id for r in top}
+        remaining = []
         for r in search.results:
             if r.chunk_id not in used:
-                top.append(r)
-                used.add(r.chunk_id)
-                if len(top) >= payload.top_k:
-                    break
+                remaining.append(r)
+        remaining.sort(key=lambda r: r.score, reverse=True)
+        for r in remaining:
+            if len(top) >= effective_top_k:
+                break
+            top.append(r)
+            used.add(r.chunk_id)
+
+    # Merge reserved identity results (prepend, dedup by chunk_id)
+    if reserved_identity:
+        existing_chunks = {r.chunk_id for r in top}
+        for r in reserved_identity:
+            if r.chunk_id not in existing_chunks:
+                top.insert(0, r)
+                existing_chunks.add(r.chunk_id)
 
     # Build citations from the top results
     citations = [
@@ -404,12 +455,21 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
         )
 
     # Step 3: pull full chunk content plus neighbors for richer context
+    # Also include the first chunk of each document (often contains key identifying info
+    # like property address, lot number, legal description, etc.)
     context_parts = []
+    seen_doc_headers: set[str] = set()
     for r in top:
         full_chunks = store.get_chunks(r.document_id)
+        parts = []
+        # Include chunk 0 (document header) if it's not the matched chunk
+        if full_chunks and r.document_id not in seen_doc_headers:
+            seen_doc_headers.add(r.document_id)
+            if full_chunks[0].chunk_id != r.chunk_id:
+                parts.append(full_chunks[0].content)
+                parts.append("...")
         for idx, ch in enumerate(full_chunks):
             if ch.chunk_id == r.chunk_id:
-                parts = []
                 if idx > 0:
                     parts.append(full_chunks[idx - 1].content)
                 parts.append(ch.content)
