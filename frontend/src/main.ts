@@ -65,7 +65,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "query-assist" | "documents" | "settings",
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -157,6 +157,14 @@ const state = reactive({
   gapNewVendorDocs: [] as string[],
   gapNewVendorNotes: "",
   gapLog: [] as string[],
+
+  // Query Assistance
+  qaPrompt: "" as string,
+  qaLoading: false,
+  qaResult: "" as string,
+  qaLog: [] as string[],
+  qaSubQueries: [] as string[],
+  qaStatus: "" as string,
 });
 
 const hasResults = computed(() => state.results.length > 0 || state.answer);
@@ -645,11 +653,20 @@ loadTaskHistory();
 // Workflow log widget renderer
 function renderLog(log: string[]) {
   if (!log.length) return null;
-  return h("details", { style: "margin-top:8px;margin-bottom:8px" }, [
+  return h("details", { style: "margin-top:8px;margin-bottom:8px", open: true }, [
     h("summary", { style: "font-size:.7rem;color:#6b7280;cursor:pointer;user-select:none" }, `⟩ Workflow Log (${log.length} steps)`),
     h("div", { style: "max-height:150px;overflow-y:auto;background:#111827;border-radius:4px;padding:6px;margin-top:4px;font-family:monospace;font-size:.68rem;line-height:1.5" },
       log.map((entry: string) => h("div", { style: "color:#a3e635" }, `$ ${entry}`))
     ),
+  ]);
+}
+
+// Progress indicator (current step + optional spinner)
+function renderProgress(status: string, loading: boolean) {
+  if (!status && !loading) return null;
+  return h("div", { style: "display:flex;align-items:center;gap:8px;padding:8px 0;font-size:.78rem;color:#6366f1" }, [
+    loading ? h("span", { class: "spinner spinner-dark" }) : null,
+    h("span", null, status || "Processing..."),
   ]);
 }
 
@@ -1089,6 +1106,14 @@ createApp({
                 onClick: () => { state.mode = "gap-email"; },
               }, "📧 Gap-to-Email"),
               h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "query-assist" ? "active" : ""}`,
+                onClick: () => { state.mode = "query-assist"; },
+              }, "🔎 Query Assist"),
+              h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "documents" ? "active" : ""}`,
+                onClick: () => { state.mode = "documents"; },
+              }, `📄 Documents (${state.documents.length})`),
+              h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "settings" ? "active" : ""}`,
                 onClick: () => { state.mode = "settings"; loadHealthCheck(); loadConfig(); loadK8sHealth(); },
               }, "⚙ Settings"),
@@ -1098,7 +1123,7 @@ createApp({
             // Tasks panel
             state.mode === "tasks"
               ? h("div", { class: "create-panel" }, [
-                  h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" }, [
+                  h("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px" }, [
                     h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0" }, "Task Workflow"),
                     h("div", { style: "display:flex;gap:6px" }, [
                       state.taskSavedHistory.length > 0
@@ -1109,6 +1134,7 @@ createApp({
                         : null,
                     ]),
                   ]),
+                  h("p", { style: "color:#9ca3af;font-size:.75rem;margin-bottom:10px" }, "Generate documents from your indexed content. Describe what you need, review the documents found, then refine. Best for: filling forms, writing descriptions, creating summaries from specific documents."),
 
                   // Task history panel
                   state.taskShowHistory
@@ -1241,6 +1267,7 @@ createApp({
                             state.taskSearching = false;
                           },
                         }, state.taskSearching ? "Searching..." : "Find Documents →"),
+                        state.taskSearching ? renderProgress("Searching and refining documents...", true) : null,
                       ])
                     : null,
 
@@ -1287,9 +1314,9 @@ createApp({
 
                   // Step 3: Generating (loading)
                   state.taskStep === "generating"
-                    ? h("div", { style: "text-align:center;padding:20px" }, [
-                        h("div", { class: "spinner spinner-dark", style: "margin:0 auto 10px" }),
-                        (state as any).taskStatus ? h("div", { style: "font-size:.8rem;color:#6366f1" }, (state as any).taskStatus) : null,
+                    ? h("div", [
+                        renderProgress((state as any).taskStatus || "Generating...", state.taskLoading),
+                        renderLog(state.taskLog),
                       ])
                     : null,
 
@@ -1302,7 +1329,7 @@ createApp({
                           h("textarea", { class: "create-textarea", placeholder: "Refine: e.g. 'Make it first person' or 'Add the plywood note'", value: state.taskRefinement, onInput: (e: any) => (state.taskRefinement = e.target.value), style: "min-height:60px;flex:1" }),
                           h("button", { class: "btn btn-primary", disabled: state.taskLoading || !state.taskRefinement.trim(), onClick: () => { state.taskStep = "generating"; runTask(state.taskRefinement); } }, state.taskLoading ? "..." : "Refine"),
                         ]),
-                        (state as any).taskStatus ? h("div", { style: "margin-top:8px;font-size:.78rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [h("span", { class: "spinner spinner-dark" }), h("span", (state as any).taskStatus)]) : null,
+                        renderProgress((state as any).taskStatus, state.taskLoading),
                         h("div", { style: "display:flex;gap:8px;margin-top:10px" }, [
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "pdf" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.pdf"; a.click(); } }, "📥 PDF"),
                           h("button", { class: "btn btn-sm btn-outline", onClick: async () => { const r = await fetch(`${apiBase}/generate/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markdown: state.taskResult, format: "docx" }) }); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "task_output.docx"; a.click(); } }, "📥 DOCX"),
@@ -1623,8 +1650,8 @@ createApp({
             // Gap-to-Email panel
             state.mode === "gap-email"
               ? h("div", { class: "create-panel" }, [
-                  h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 12px 0" }, "Gap-to-Email Pipeline"),
-                  h("p", { style: "color:#9ca3af;font-size:.8rem;margin-bottom:16px" }, "Select a form, add vendors with their documents, and generate follow-up emails for missing items."),
+                  h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 4px 0" }, "Gap-to-Email Pipeline"),
+                  h("p", { style: "color:#9ca3af;font-size:.75rem;margin-bottom:12px" }, "Analyze what a form requires vs. what your vendors have provided, then generate follow-up emails requesting only what's missing. Best for: gathering documentation from contractors, completing application packages."),
 
                   // Form document autocomplete
                   h("div", { style: "margin-bottom:12px;position:relative" }, [
@@ -1659,8 +1686,6 @@ createApp({
                         )
                       : null,
                   ]),
-
-                  // Context documents auto-discovered - no manual selection needed
 
                   // Vendors list
                   h("div", { style: "margin-bottom:12px;border:1px solid #374151;border-radius:8px;padding:12px" }, [
@@ -1854,7 +1879,8 @@ createApp({
                   // Error
                   state.gapError ? h("div", { style: "color:#ef4444;font-size:.8rem;margin-bottom:12px" }, state.gapError) : null,
 
-                  // Workflow log
+                  // Progress + Log
+                  state.gapLoading ? renderProgress("Analyzing gaps and generating emails...", true) : null,
                   state.gapLog.length > 0 ? renderLog(state.gapLog) : null,
 
                   // Results
@@ -1876,6 +1902,65 @@ createApp({
                       }, "📋 Copy Email"),
                     ])
                   ),
+                ])
+              : null,
+
+            // Query Assistance panel
+            state.mode === "query-assist"
+              ? h("div", { class: "create-panel" }, [
+                  h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 4px 0" }, "Query Assistance"),
+                  h("p", { style: "color:#9ca3af;font-size:.75rem;margin-bottom:12px" }, "Exhaustive deep search. Decomposes your question into multiple targeted searches and reads every result individually to guarantee nothing is missed. Best for: comprehensive inventories, finding everything across many documents, questions where completeness matters more than speed. (~25-30s)"),
+                  h("textarea", {
+                    style: "width:100%;min-height:80px;padding:8px;border:1px solid #374151;border-radius:6px;background:#1f2937;color:#f3f4f6;font-size:.85rem;margin-bottom:8px;resize:vertical",
+                    placeholder: "e.g., What outside work requires completion taking into account that we are currently working on the roof?",
+                    value: state.qaPrompt,
+                    onInput: (e: Event) => { state.qaPrompt = (e.target as HTMLTextAreaElement).value; },
+                  }),
+                  h("button", {
+                    class: "btn btn-primary",
+                    style: "width:100%;margin-bottom:12px",
+                    disabled: state.qaLoading || !state.qaPrompt.trim(),
+                    onClick: async () => {
+                      state.qaLoading = true;
+                      state.qaResult = "";
+                      state.qaLog = [];
+                      state.qaSubQueries = [];
+                      state.qaStatus = "Generating search categories...";
+                      try {
+                        state.qaStatus = "Searching across all categories...";
+                        const res = await fetch(`${apiBase}/query-assist`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ question: state.qaPrompt }),
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        state.qaStatus = "Processing results...";
+                        const data = await res.json();
+                        state.qaResult = data.answer || "";
+                        state.qaLog = data.log || [];
+                        state.qaSubQueries = data.sub_queries || [];
+                        state.qaStatus = "";
+                      } catch (e: any) {
+                        state.qaResult = `Error: ${e.message}`;
+                        state.qaStatus = "";
+                      }
+                      state.qaLoading = false;
+                    },
+                  }, state.qaLoading ? "Searching & Analyzing..." : "🔎 Find Comprehensive Answer"),
+                  // Progress + Log (always show progress when loading)
+                  state.qaLoading ? renderProgress(state.qaStatus || "Starting...", true) : null,
+                  state.qaLog.length > 0 ? renderLog(state.qaLog) : null,
+                  state.qaSubQueries.length > 0
+                    ? h("details", { style: "margin-bottom:10px" }, [
+                        h("summary", { style: "font-size:.7rem;color:#6b7280;cursor:pointer" }, `Sub-queries generated (${state.qaSubQueries.length})`),
+                        h("div", { style: "padding:6px;font-size:.7rem;color:#9ca3af;font-family:monospace" },
+                          state.qaSubQueries.map((q: string) => h("div", { style: "padding:2px 0" }, `→ ${q}`))
+                        ),
+                      ])
+                    : null,
+                  state.qaResult
+                    ? h("div", { style: "border:1px solid #374151;border-radius:8px;padding:12px;max-height:500px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap;background:#111827;color:#d1d5db" }, state.qaResult)
+                    : null,
                 ])
               : null,
 
@@ -2059,7 +2144,7 @@ createApp({
                         .map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
                         const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID" || key === "BEDROCK_EMBED_MODEL_ID";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID" || key === "BEDROCK_EMBED_MODEL_ID" || key === "BEDROCK_QUERY_ASSIST_MODEL" || key === "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : key === "BEDROCK_EMBED_MODEL_ID" ? state.embeddingModels : state.qaModels;
                         // For task model selectors, add context window hints to help user choose
@@ -2099,6 +2184,8 @@ createApp({
                             "BEDROCK_TASK_MULTI_MODEL_ID": "Task Model — Structured Pipeline (complex tasks)",
                             "BEDROCK_DETECT_MODEL_ID": "Format Detection Model (fast/cheap, returns 1 word)",
                             "BEDROCK_TEMPLATE_MODEL_ID": "Template Extraction Model (needs strong JSON)",
+                            "BEDROCK_QUERY_ASSIST_MODEL": "Query Assist — Answer Extraction Model",
+                            "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL": "Query Assist — Category Generation Model",
                             "BEDROCK_VISION_MODEL_ID": "Vision OCR Model (must support images)",
                             "AWS_REGION": "AWS Region",
                             "BOOKSTACK_URL": "BookStack URL",
@@ -2171,6 +2258,14 @@ createApp({
                         onChange: (e: Event) => { setTaskHistoryMax(parseInt((e.target as HTMLSelectElement).value, 10)); },
                       }, [5, 10, 15, 25, 50].map(n => h("option", { value: n }, String(n)))),
                     ]),
+                  ]),
+
+                  // Query Assist model info
+                  h("div", { style: "margin-top:8px;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:.75rem;color:#6b7280" }, [
+                    h("div", { style: "font-weight:600;margin-bottom:4px;color:#374151" }, "Query Assist Models"),
+                    h("div", { style: "padding:2px 0" }, `Category Generation: ${(state.config as any)?.BEDROCK_QUERY_ASSIST_CATEGORY_MODEL || "amazon.nova-pro-v1:0"} (configurable)`),
+                    h("div", { style: "padding:2px 0" }, `Answer Extraction: ${(state.config as any)?.BEDROCK_QUERY_ASSIST_MODEL || "amazon.nova-pro-v1:0"} (configurable)`),
+                    h("div", { style: "padding:2px 0;font-style:italic;color:#9ca3af" }, "Both use Nova Pro by default. Category model generates search terms; Answer model reads all results and produces the final list."),
                   ]),
 
                   // Usage section (collapsible)
@@ -2262,7 +2357,13 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" ? h("div", { class: "search-row" }, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" && state.mode !== "query-assist" ? h("div", {}, [
+              h("div", { style: "font-size:.72rem;color:#9ca3af;margin-bottom:6px" },
+                state.mode === "search"
+                  ? "Find specific passages in your documents by keyword or phrase. Fast, direct results."
+                  : "Quick Q&A — ask a question, get a direct answer with citations. Best for single-fact lookups. (~2-4s)"
+              ),
+              h("div", { class: "search-row" }, [
               h("input", {
                 class: "search-input",
                 value: state.query,
@@ -2285,7 +2386,7 @@ createApp({
                   : (state.mode === "search" ? "Search" : "Ask"),
                 state.searchLoading ? h("span", { class: "spinner" }) : null,
               ]),
-            ]) : null,
+            ])]) : null,
           ]),
 
           // Results card (hidden in settings mode)
@@ -2309,6 +2410,7 @@ createApp({
                 state.answer
                   ? h("div", { class: "answer-box" }, state.answer)
                   : null,
+                state.searchLoading ? renderProgress(state.mode === "search" ? "Searching..." : "Thinking...", true) : null,
                 state.askLog.length > 0 ? renderLog(state.askLog) : null,
                 ...(state.mode === "ask" ? state.citations : state.results).map((r: any, idx: number) => {
                   const citKey = `cite_${idx}`;
@@ -2442,8 +2544,8 @@ createApp({
               : null,
           ]),
 
-          // Documents list - grouped by category, collapsible, scrollable
-          h("div", { class: "card" }, [
+          // Documents list - only on Documents tab
+          state.mode === "documents" ? h("div", { class: "card" }, [
             h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:12px" }, [
               h("h2", { style: "margin-bottom:0" }, `Documents (${state.documents.length})`),
               state.documents.length > 0
@@ -2519,7 +2621,7 @@ createApp({
                       ]);
                     }),
                 ),
-          ]),
+          ]) : null,
         ]),
         // Preview modal
         (state as any).previewDoc

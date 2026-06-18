@@ -568,6 +568,119 @@ def search_refine(body: dict):
     return {"results": refined}
 
 
+@app.post("/query-assist")
+def query_assist(body: dict):
+    """Comprehensive query assistance: category search + catch-all + single-pass extraction."""
+    import json as _json_qa
+    import re as _re
+
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    client = _get_bedrock()
+    log = []
+    log.append(f"question: \"{question[:60]}\"")
+
+    # Step 1: Generate physical system categories from the question (1 model call)
+    category_model = os.getenv("BEDROCK_QUERY_ASSIST_CATEGORY_MODEL", "amazon.nova-pro-v1:0")
+    try:
+        resp = client.converse(
+            modelId=category_model,
+            messages=[{"role": "user", "content": [{"text":
+                f"Question: \"{question}\"\n\n"
+                f"List every physical system/component that could have items needing attention for this question. "
+                f"Return a JSON array of 10-12 search phrases (3-6 words each) using inspection report terminology. "
+                f"Cover comprehensively: roofing, siding, trim, deck/porch, railings, stairs, "
+                f"garage door, driveway, drainage, structural connections, flashings, exterior paint/caulk, "
+                f"and any other relevant systems."
+            }]}],
+            inferenceConfig={"maxTokens": 300, "temperature": 0.0},
+        )
+        text = resp["output"]["message"]["content"][0]["text"]
+        match = _re.search(r"\[.*\]", text, _re.DOTALL)
+        categories = _json_qa.loads(match.group()) if match else []
+    except Exception:
+        categories = []
+    log.append(f"categories: {len(categories)} generated")
+
+    # Step 2: Search with original question + categories + catch-all inspection language
+    searches = [
+        question,
+        "major problem minor problem repair replace exterior",
+        "defect damage safety concern inspection findings",
+    ] + categories
+    log.append(f"searches: {len(searches)} total")
+
+    from .search import search_chunks
+    all_chunks: dict = {}
+    for q in searches:
+        result = search_chunks(q, page=1, page_size=8)
+        for r in result.get("results", []):
+            key = r["chunk_id"]
+            if key not in all_chunks or r["score"] > all_chunks[key]["score"]:
+                all_chunks[key] = r
+    log.append(f"chunks: {len(all_chunks)} unique from {len(set(r['document_id'] for r in all_chunks.values()))} docs")
+
+    # Step 3: Single-pass extraction
+    top = sorted(all_chunks.values(), key=lambda r: r["score"], reverse=True)
+    context = "\n\n---\n\n".join(
+        f"[{r['title']}]\n{r['snippet'].replace('<em>','').replace('</em>','')}"
+        for r in top
+    )
+
+    answer_model = os.getenv("BEDROCK_QUERY_ASSIST_MODEL", "") or "amazon.nova-pro-v1:0"
+    log.append(f"extracting ({answer_model.split('.')[1].split('-')[0] if '.' in answer_model else answer_model})...")
+    model_id = answer_model
+    resolved = model_id
+    try:
+        resp = client.converse(
+            modelId=resolved,
+            system=[{"text": (
+                "You are an exhaustive document extractor. Read EVERY excerpt below carefully. "
+                "Find ALL items that answer the user's question. Do not skip any excerpt. "
+                "Output a numbered list. For each: state the specific problem, its location, and the fix. "
+                "Remove duplicates. Exclude items covered by work described as in-progress. "
+                "Exclude installation instructions, guidelines, and rules — only actual defects or damage. "
+                "Only include items matching the scope of the question."
+            )}],
+            messages=[{"role": "user", "content": [{"text":
+                f"Read ALL excerpts and list every item answering this question:\n\n"
+                f"Question: {question}\n\nExcerpts:\n{context}"
+            }]}],
+            inferenceConfig={"maxTokens": 3000},
+        )
+    except Exception:
+        resolved = f"us.{model_id}"
+        resp = client.converse(
+            modelId=resolved,
+            system=[{"text": (
+                "You are an exhaustive document extractor. Read EVERY excerpt below carefully. "
+                "Find ALL items that answer the user's question. Do not skip any excerpt. "
+                "Output a numbered list. For each: state the specific problem, its location, and the fix. "
+                "Remove duplicates. Exclude items covered by work described as in-progress. "
+                "Exclude installation instructions, guidelines, and rules — only actual defects or damage. "
+                "Only include items matching the scope of the question."
+            )}],
+            messages=[{"role": "user", "content": [{"text":
+                f"Read ALL excerpts and list every item answering this question:\n\n"
+                f"Question: {question}\n\nExcerpts:\n{context}"
+            }]}],
+            inferenceConfig={"maxTokens": 3000},
+        )
+
+    answer = resp["output"]["message"]["content"][0]["text"]
+    log.append(f"done: {len(answer)} chars")
+
+    return {
+        "answer": answer,
+        "sub_queries": searches,
+        "log": log,
+        "chunks_found": len(all_chunks),
+        "docs_searched": len(set(r["document_id"] for r in all_chunks.values())),
+    }
+
+
 @app.post("/gap-to-email", response_model=GapEmailResponse)
 def gap_to_email(payload: GapEmailRequest):
     """Analyze a form's requirements against vendor documents and generate follow-up emails."""
@@ -2258,6 +2371,8 @@ def admin_get_config():
         "BEDROCK_TASK_MULTI_MODEL_ID": task_multi,
         "BEDROCK_DETECT_MODEL_ID": detect_model,
         "BEDROCK_TEMPLATE_MODEL_ID": template_model,
+        "BEDROCK_QUERY_ASSIST_MODEL": os.getenv("BEDROCK_QUERY_ASSIST_MODEL", "amazon.nova-pro-v1:0"),
+        "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL": os.getenv("BEDROCK_QUERY_ASSIST_CATEGORY_MODEL", "amazon.nova-pro-v1:0"),
         "BEDROCK_VISION_MODEL_ID": vision_model,
         "BEDROCK_EMBED_MODEL_ID": embed_model,
         "OPENSEARCH_HOST": os.getenv("OPENSEARCH_HOST", "localhost"),
