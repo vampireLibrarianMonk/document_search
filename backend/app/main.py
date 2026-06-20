@@ -107,6 +107,207 @@ async def ingest_upload_bulk(files: list[UploadFile] = File(...)) -> BulkUploadR
     return BulkUploadResponse(uploaded=uploaded, errors=errors)
 
 
+@app.post("/ingest/scan")
+async def ingest_scan(files: list[UploadFile] = File(...)):
+    """Save scan files and start background processing. Returns scan_id for status polling."""
+    import threading
+    import uuid
+    from pathlib import Path
+
+    from .services import SUPPORTED_EXTENSIONS, _sanitize_filename
+
+    scan_id = f"scan_{uuid.uuid4().hex[:12]}"
+
+    valid_files = []
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext in SUPPORTED_EXTENSIONS:
+            content = await f.read()
+            safe_name = _sanitize_filename(f.filename or f"file{ext}")
+            temp_id = store.new_id("tmp")
+            dest = os.path.join(store.upload_dir, f"{temp_id}_{safe_name}")
+            with open(dest, "wb") as fh:
+                fh.write(content)
+            valid_files.append((f.filename or f"file{ext}", ext, dest))
+
+    valid_files.sort(key=lambda x: x[0])
+    _scan_events[scan_id] = []
+    _scan_done[scan_id] = False
+
+    def _run_scan():
+        import json as _j
+        import shutil
+        from .classifier import classify_document
+        from .extraction import _extract_page_image, chunk_text, extract_text
+        from .pdf_splitter import _detect_boundary, _get_client as _get_split_client, merge_across_files, validate_documents
+        from .schemas import ChunkRecord, DocumentResponse
+        from .search import index_chunks
+
+        def emit(data):
+            _scan_events[scan_id].append(f"data: {_j.dumps(data)}\n\n")
+
+        total = len(valid_files)
+        emit({"type": "start", "total": total})
+        docs_created = 0
+        all_split_results = []
+        non_pdf_items = []
+
+        for idx, (filename, ext, dest) in enumerate(valid_files):
+            if ext == ".pdf":
+                from pypdf import PdfReader as _PR, PdfWriter as _PW
+                reader = _PR(dest)
+                if len(reader.pages) > 1:
+                    num_pages = len(reader.pages)
+                    emit({"type": "step", "file": filename, "step": "split", "status": "running", "current": idx+1, "total": total, "pages": num_pages})
+                    try:
+                        page_texts = []
+                        for pi in range(num_pages):
+                            text = _extract_page_image(reader.pages[pi], pi+1, dest) or ""
+                            page_texts.append(text)
+                            emit({"type": "progress", "file": filename, "detail": f"OCR page {pi+1}/{num_pages}"})
+
+                        split_client = _get_split_client()
+                        boundaries = [0]
+                        for pi in range(num_pages - 1):
+                            if page_texts[pi].strip() and page_texts[pi+1].strip():
+                                if _detect_boundary(split_client, page_texts[pi], page_texts[pi+1]):
+                                    boundaries.append(pi+1)
+                            emit({"type": "progress", "file": filename, "detail": f"Boundary {pi+1}/{num_pages-1}"})
+
+                        split_docs = []
+                        from pathlib import Path as _P
+                        for di, sp in enumerate(boundaries):
+                            ep = boundaries[di+1] if di+1 < len(boundaries) else num_pages
+                            w = _PW()
+                            for p in range(sp, ep):
+                                w.add_page(reader.pages[p])
+                            split_path = str(_P(dest).parent / f"{_P(dest).stem}_doc{di+1:02d}_p{sp+1}-{ep}.pdf")
+                            with open(split_path, "wb") as sf:
+                                w.write(sf)
+                            split_docs.append({"path": split_path, "pages": list(range(sp, ep)), "text": "\n".join(page_texts[sp:ep])})
+
+                        emit({"type": "step", "file": filename, "step": "split", "status": "done", "documents_found": len(split_docs)})
+                        all_split_results.append(split_docs)
+                    except Exception as e:
+                        emit({"type": "step", "file": filename, "step": "split", "status": "error", "error": str(e)[:200]})
+                    orig_dir = os.path.join(os.path.dirname(dest), "originals")
+                    os.makedirs(orig_dir, exist_ok=True)
+                    shutil.move(dest, os.path.join(orig_dir, os.path.basename(dest)))
+                    continue
+            non_pdf_items.append((filename, dest))
+
+        # Phase 2: Merge
+        if len(all_split_results) > 1:
+            emit({"type": "step", "file": "(all files)", "step": "merge", "status": "running"})
+            try:
+                merged_docs = merge_across_files(all_split_results)
+                merged_count = sum(len(r) for r in all_split_results) - len(merged_docs)
+                emit({"type": "step", "file": "(all files)", "step": "merge", "status": "done", "merged": merged_count, "documents": len(merged_docs)})
+            except Exception as e:
+                emit({"type": "step", "file": "(all files)", "step": "merge", "status": "error", "error": str(e)[:200]})
+                merged_docs = [d for r in all_split_results for d in r]
+        elif all_split_results:
+            merged_docs = all_split_results[0]
+        else:
+            merged_docs = []
+
+        # Phase 3: Validate
+        if merged_docs:
+            emit({"type": "step", "file": "(all files)", "step": "validate", "status": "running"})
+            try:
+                merged_docs = validate_documents(merged_docs)
+                issues = [d for d in merged_docs if not d.get("validation", {}).get("valid", True)]
+                emit({"type": "step", "file": "(all files)", "step": "validate", "status": "done", "validated": len(merged_docs), "issues": len(issues)})
+            except Exception as e:
+                emit({"type": "step", "file": "(all files)", "step": "validate", "status": "error", "error": str(e)[:200]})
+
+        # Phase 4: Classify + Index
+        for si, split_doc in enumerate(merged_docs):
+            text = split_doc["text"]
+            if not text.strip():
+                continue
+            split_name = f"doc {si+1}/{len(merged_docs)} ({len(split_doc['pages'])} pg)"
+            emit({"type": "step", "file": split_name, "step": "classify", "status": "running"})
+            try:
+                category, document_type, tags, suggested_title, document_date = classify_document("scan.pdf", text)
+                emit({"type": "step", "file": split_name, "step": "classify", "status": "done", "category": category, "document_type": document_type, "title": suggested_title})
+            except Exception as e:
+                category, document_type, tags, suggested_title, document_date = "Uncategorized", "general", [], split_name, ""
+
+            emit({"type": "step", "file": split_name, "step": "index", "status": "running"})
+            try:
+                doc_id = store.new_id("doc")
+                final_path = os.path.join(store.upload_dir, f"{doc_id}_{_sanitize_filename(suggested_title)}.pdf")
+                shutil.move(split_doc["path"], final_path)
+                chunks = chunk_text(text)
+                chunk_records = [ChunkRecord(chunk_id=f"{doc_id}_chunk_{i}", document_id=doc_id, section_heading="Body", content=c, source_type="uploaded_file", document_type=document_type, tags=tags) for i, c in enumerate(chunks)]
+                doc = DocumentResponse(document_id=doc_id, title=suggested_title, original_filename=f"scan_split_{si+1}.pdf", source_type="uploaded_file", source_url="", document_type=document_type, category=category, tags=tags, status="active", document_date=document_date)
+                store.add_document(doc)
+                store.set_chunks(doc_id, chunk_records)
+                os_chunks = [{"chunk_id": c.chunk_id, "content": c.content, "source_type": c.source_type, "document_type": c.document_type, "tags": c.tags} for c in chunk_records]
+                index_chunks(doc_id, suggested_title, os_chunks)
+                docs_created += 1
+                emit({"type": "done", "file": suggested_title, "document_id": doc_id, "title": suggested_title, "category": category, "document_type": document_type})
+            except Exception as e:
+                emit({"type": "step", "file": split_name, "step": "index", "status": "error", "error": str(e)[:200]})
+
+        # Phase 5: Non-PDFs
+        for filename, dest in non_pdf_items:
+            try:
+                text, _ = extract_text(dest)
+                if not text.strip():
+                    continue
+                category, document_type, tags, suggested_title, document_date = classify_document(filename, text)
+                doc_id = store.new_id("doc")
+                chunks = chunk_text(text)
+                chunk_records = [ChunkRecord(chunk_id=f"{doc_id}_chunk_{i}", document_id=doc_id, section_heading="Body", content=c, source_type="uploaded_file", document_type=document_type, tags=tags) for i, c in enumerate(chunks)]
+                doc = DocumentResponse(document_id=doc_id, title=suggested_title, original_filename=filename, source_type="uploaded_file", source_url="", document_type=document_type, category=category, tags=tags, status="active", document_date=document_date)
+                store.add_document(doc)
+                store.set_chunks(doc_id, chunk_records)
+                os_chunks = [{"chunk_id": c.chunk_id, "content": c.content, "source_type": c.source_type, "document_type": c.document_type, "tags": c.tags} for c in chunk_records]
+                index_chunks(doc_id, suggested_title, os_chunks)
+                docs_created += 1
+                emit({"type": "done", "file": suggested_title, "document_id": doc_id, "title": suggested_title, "category": category, "document_type": document_type})
+            except Exception as e:
+                emit({"type": "step", "file": filename, "step": "index", "status": "error", "error": str(e)[:200]})
+
+        emit({"type": "complete", "total": total, "documents_created": docs_created})
+        _scan_done[scan_id] = True
+
+    thread = threading.Thread(target=_run_scan, daemon=True)
+    thread.start()
+    return {"scan_id": scan_id, "queued": len(valid_files)}
+
+
+# In-memory scan event queues
+_scan_events: dict[str, list[str]] = {}
+_scan_done: dict[str, bool] = {}
+
+
+@app.get("/ingest/scan-status/{scan_id}")
+async def ingest_scan_status(scan_id: str):
+    """SSE stream for scan progress."""
+    import asyncio
+
+    from starlette.responses import StreamingResponse
+
+    async def _stream():
+        cursor = 0
+        while True:
+            events = _scan_events.get(scan_id, [])
+            while cursor < len(events):
+                yield events[cursor]
+                cursor += 1
+            if _scan_done.get(scan_id, False) and cursor >= len(events):
+                _scan_events.pop(scan_id, None)
+                _scan_done.pop(scan_id, None)
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(_stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+
+
+
 @app.post("/ingest/upload-queue")
 async def ingest_upload_queue(files: list[UploadFile] = File(...)):
     """Save files to disk and queue them for background processing. Returns immediately."""
@@ -2362,6 +2563,9 @@ def admin_get_config():
     detect_model = os.getenv("BEDROCK_DETECT_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
     template_model = os.getenv("BEDROCK_TEMPLATE_MODEL_ID", "mistral.magistral-small-2509")
     embed_model = os.getenv("BEDROCK_EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
+    classify_model = os.getenv("BEDROCK_CLASSIFY_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "") or "amazon.nova-micro-v1:0"
+    scan_split_model = os.getenv("BEDROCK_SCAN_SPLIT_MODEL_ID", "mistral.mistral-small-2402-v1:0")
+    scan_validate_model = os.getenv("BEDROCK_SCAN_VALIDATE_MODEL_ID", "amazon.nova-pro-v1:0")
     return {
         "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
         "BEDROCK_MODEL_ID": qa_model,
@@ -2371,6 +2575,9 @@ def admin_get_config():
         "BEDROCK_TASK_MULTI_MODEL_ID": task_multi,
         "BEDROCK_DETECT_MODEL_ID": detect_model,
         "BEDROCK_TEMPLATE_MODEL_ID": template_model,
+        "BEDROCK_CLASSIFY_MODEL_ID": classify_model,
+        "BEDROCK_SCAN_SPLIT_MODEL_ID": scan_split_model,
+        "BEDROCK_SCAN_VALIDATE_MODEL_ID": scan_validate_model,
         "BEDROCK_QUERY_ASSIST_MODEL": os.getenv("BEDROCK_QUERY_ASSIST_MODEL", "amazon.nova-pro-v1:0"),
         "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL": os.getenv("BEDROCK_QUERY_ASSIST_CATEGORY_MODEL", "amazon.nova-pro-v1:0"),
         "BEDROCK_VISION_MODEL_ID": vision_model,
@@ -2400,6 +2607,9 @@ def admin_update_config(updates: dict):
         "BEDROCK_TASK_MULTI_MODEL_ID",
         "BEDROCK_DETECT_MODEL_ID",
         "BEDROCK_TEMPLATE_MODEL_ID",
+        "BEDROCK_CLASSIFY_MODEL_ID",
+        "BEDROCK_SCAN_SPLIT_MODEL_ID",
+        "BEDROCK_SCAN_VALIDATE_MODEL_ID",
         "BEDROCK_VISION_MODEL_ID",
         "BEDROCK_EMBED_MODEL_ID",
         "BOOKSTACK_URL",

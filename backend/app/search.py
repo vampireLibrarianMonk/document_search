@@ -156,12 +156,34 @@ def search_chunks(
     if document_ids:
         filter_clauses.append({"terms": {"document_id": document_ids}})
 
-    # BM25 leg
+    # BM25 leg — title gets highest boost so documents whose name matches the query
+    # rank above documents that merely mention the term in body text.
+    # document_type is keyword, so we add wildcard clauses for each query word.
+    _STOP_WORDS = {
+        "the", "this", "that", "which", "what", "where", "when", "how", "who",
+        "for", "from", "with", "about", "into", "does", "have", "has", "had",
+        "are", "was", "were", "been", "being", "will", "would", "could", "should",
+        "can", "may", "might", "shall", "must", "need", "find", "show", "get",
+        "document", "file", "paper", "paperwork", "page", "copy",
+        "house", "home", "property", "our", "their", "your",
+    }
+    query_words = [w for w in query.lower().split() if len(w) > 2 and w not in _STOP_WORDS]
+    doc_type_clauses = [
+        {"wildcard": {"document_type": {"value": f"*{w}*", "boost": 20}}}
+        for w in query_words
+    ]
     bm25_query = {
-        "multi_match": {
-            "query": query,
-            "fields": ["content^3", "title", "section_heading"],
-            "type": "best_fields",
+        "bool": {
+            "should": [
+                {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["title^5", "content^2", "section_heading"],
+                        "type": "best_fields",
+                    },
+                },
+                *doc_type_clauses,
+            ],
         },
     }
 
@@ -195,6 +217,11 @@ def search_chunks(
             "fields": {"content": {"fragment_size": 500, "number_of_fragments": 1}},
         },
     }
+
+    # For user-facing searches (no document_ids restriction), collapse results so we
+    # show the single best chunk per document instead of flooding results with one doc.
+    if not document_ids:
+        body["collapse"] = {"field": "document_id"}
 
     resp = client.search(index=INDEX_NAME, body=body)
 

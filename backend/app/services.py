@@ -317,12 +317,33 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
     # Step 0: expand the query for better retrieval
     expanded_query = payload.question
     try:
+        # Get available document types from the index for context-aware expansion
+        doc_types = []
+        try:
+            from . import search as os_search_mod
+            client = os_search_mod.get_client()
+            agg_resp = client.search(
+                index=os_search_mod.INDEX_NAME,
+                body={"size": 0, "aggs": {"types": {"terms": {"field": "document_type", "size": 100}}}},
+            )
+            doc_types = [b["key"] for b in agg_resp["aggregations"]["types"]["buckets"]]
+        except Exception:
+            pass
+
+        type_list = ", ".join(doc_types[:50]) if doc_types else ""
         client = _get_bedrock()
         resp = client.converse(
             modelId="amazon.nova-micro-v1:0",
             messages=[{"role": "user", "content": [{"text":
-                f"Rewrite this question as a search query that would find the answer in technical documents. "
-                f"Add relevant synonyms and technical terms. Return ONLY the search query, nothing else.\n\n"
+                f"You help translate user questions into effective search queries for a document management system.\n\n"
+                f"Available document types in the index: {type_list}\n\n"
+                f"Rules:\n"
+                f"- Rewrite the question as a search query using terms that would appear IN the documents themselves\n"
+                f"- Map casual language to the matching document_type (e.g. 'my deed' → 'deed conveyance', "
+                f"'insurance' → 'insurance policy coverage', 'HOA rules' → 'rules regulations covenant')\n"
+                f"- Include the document_type value as a keyword if it clearly matches\n"
+                f"- Do NOT include meta-words like 'document', 'file', 'find', 'show', 'which', 'where'\n"
+                f"- Return ONLY the search query, nothing else\n\n"
                 f"Question: {payload.question}"
             }]}],
             inferenceConfig={"maxTokens": 100},
@@ -370,11 +391,15 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
         re.IGNORECASE,
     )
     identity_results: list[SearchResult] = []
+    _IDENTITY_DOC_TYPES = {
+        "deed", "deed_of_trust", "appraisal", "closing_disclosure",
+        "tax_assessment", "title_report", "survey", "plat",
+    }
     if _PERSONAL_PATTERNS.search(payload.question):
         identity_search = run_search(
             store,
             SearchRequest(
-                query="legal description lot number property address parcel assessor",
+                query="legal description lot number parcel assessor tax map",
                 mode="hybrid",
                 filters=payload.filters,
                 page=1,
@@ -383,6 +408,8 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
         )
         seen_chunks = {r.chunk_id for r in search.results}
         for r in identity_search.results:
+            if r.document_type not in _IDENTITY_DOC_TYPES:
+                continue
             if r.chunk_id not in seen_chunks:
                 search.results.append(r)
                 seen_chunks.add(r.chunk_id)
@@ -400,6 +427,18 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
 
     effective_top_k = payload.top_k - len(reserved_identity)
 
+    # Build keyword set from original question for relevance filtering
+    _query_keywords = {
+        w for w in re.findall(r'[a-z]+', payload.question.lower())
+        if len(w) > 2 and w not in {
+            "the", "this", "that", "which", "what", "where", "when", "how", "who",
+            "for", "from", "with", "about", "into", "does", "have", "has", "had",
+            "are", "was", "were", "been", "will", "would", "could", "should",
+            "can", "may", "did", "show", "find", "get", "tell", "give",
+            "document", "file", "paper", "house", "home", "our", "your", "their",
+        }
+    }
+
     seen_docs: dict[str, list[SearchResult]] = {}
     for r in search.results:
         seen_docs.setdefault(r.document_id, []).append(r)
@@ -409,6 +448,16 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
     for doc_id, chunks in seen_docs.items():
         chunks.sort(key=lambda r: r.score, reverse=True)
         top.append(chunks[0])
+
+    # Re-score: demote results where neither title nor snippet has keyword overlap
+    for r in top:
+        title_words = set(re.findall(r'[a-z]+', r.title.lower()))
+        snippet_words = set(re.findall(r'[a-z]+', (r.snippet or "").lower()))
+        doc_type_words = set(r.document_type.split("_"))
+        combined = title_words | snippet_words | doc_type_words
+        if not _query_keywords & combined:
+            r.score *= 0.1  # heavily penalize no-overlap results
+
     top.sort(key=lambda r: r.score, reverse=True)
     top = top[: effective_top_k]
 
@@ -426,12 +475,20 @@ def run_ask(store: PgStore, payload: AskRequest) -> AskResponse:
             top.append(r)
             used.add(r.chunk_id)
 
-    # Merge reserved identity results (prepend, dedup by chunk_id)
+    # Merge reserved identity results (insert by score, dedup by chunk_id)
     if reserved_identity:
         existing_chunks = {r.chunk_id for r in top}
         for r in reserved_identity:
             if r.chunk_id not in existing_chunks:
-                top.insert(0, r)
+                # Insert in score-sorted position
+                inserted = False
+                for i, t in enumerate(top):
+                    if r.score >= t.score:
+                        top.insert(i, r)
+                        inserted = True
+                        break
+                if not inserted:
+                    top.append(r)
                 existing_chunks.add(r.chunk_id)
 
     # Build citations from the top results

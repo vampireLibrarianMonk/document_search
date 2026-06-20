@@ -65,7 +65,18 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "query-assist" | "documents" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "query-assist" | "documents" | "scan" | "settings",
+
+  // Scan
+  scanFiles: [] as File[],
+  scanLoading: false,
+  scanStatus: "",
+  scanLog: [] as Array<{
+    file: string;
+    step: string;
+    status: string;
+    detail: string;
+  }>,
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -176,6 +187,70 @@ async function loadDocuments() {
     state.documents = await (await fetch(`${apiBase}/documents`)).json();
   } catch {
     // Backend might not be running yet
+  }
+}
+
+async function startScan() {
+  if (state.scanFiles.length === 0) {
+    state.scanStatus = "Select a folder first";
+    return;
+  }
+  state.scanLoading = true;
+  state.scanStatus = `Scanning ${state.scanFiles.length} files...`;
+  state.scanLog = [];
+
+  const body = new FormData();
+  for (const f of state.scanFiles) body.append("files", f);
+
+  try {
+    const res = await fetch(`${apiBase}/ingest/scan`, { method: "POST", body });
+    if (!res.ok) { state.scanStatus = `Error: ${await res.text()}`; return; }
+    const { scan_id } = await res.json();
+    state.scanStatus = `Scan queued (${state.scanFiles.length} files). Processing...`;
+
+    // Subscribe to SSE status stream
+    const evtSource = new EventSource(`${apiBase}/ingest/scan-status/${scan_id}`);
+    evtSource.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "step") {
+        const stepLabel = msg.step === "split" ? "✂️ Split" : msg.step === "merge" ? "🔗 Merge" : msg.step === "validate" ? "✅ Validate" : msg.step === "ocr" ? "📷 OCR" : msg.step === "classify" ? "🏷 Classify" : "📥 Index";
+        const idx = state.scanLog.findIndex((l: any) => l.file === msg.file);
+        const detail = msg.status === "done"
+          ? `${stepLabel} ✓` + (msg.title ? ` → ${msg.title}` : msg.chars ? ` (${msg.chars} chars)` : msg.chunks ? ` (${msg.chunks} chunks)` : msg.documents_found ? ` → ${msg.documents_found} documents found` : msg.merged !== undefined ? ` → ${msg.merged} cross-file merges, ${msg.documents} documents` : msg.validated ? ` (${msg.validated} docs, ${msg.issues} issues)` : "")
+          : msg.status === "error" ? `${stepLabel} ✗ ${msg.error || ""}` : msg.status === "warning" ? `${stepLabel} ⚠️ ${msg.error || ""}` : `${stepLabel}...` + (msg.pages ? ` (${msg.pages} pages)` : "");
+        if (idx >= 0) {
+          state.scanLog[idx] = { file: msg.file, step: msg.step, status: msg.status, detail };
+        } else {
+          state.scanLog.push({ file: msg.file, step: msg.step, status: msg.status, detail });
+        }
+        if (msg.current && msg.total) state.scanStatus = `Processing file ${msg.current}/${msg.total}...`;
+      } else if (msg.type === "progress") {
+        state.scanStatus = `${msg.file || ""}: ${msg.detail || "Processing..."}`;
+        const idx = state.scanLog.findIndex((l: any) => l.file === msg.file && l.step === "progress");
+        const entry = { file: msg.file || "", step: "progress", status: "running", detail: `⏳ ${msg.detail}` };
+        if (idx >= 0) { state.scanLog[idx] = entry; } else { state.scanLog.push(entry); }
+      } else if (msg.type === "done") {
+        const idx = state.scanLog.findIndex((l: any) => l.file === msg.file || (l.step === "progress" && l.file === msg.file));
+        if (idx >= 0) state.scanLog[idx] = { file: msg.title || msg.file, step: "complete", status: "done", detail: `✅ ${msg.category} / ${msg.document_type}` };
+        else state.scanLog.push({ file: msg.title || msg.file, step: "complete", status: "done", detail: `✅ ${msg.category} / ${msg.document_type}` });
+      } else if (msg.type === "complete") {
+        state.scanStatus = `Scan complete — ${msg.documents_created || msg.total} documents created`;
+        evtSource.close();
+        state.scanLoading = false;
+        loadDocuments();
+      }
+    };
+    evtSource.onerror = () => {
+      evtSource.close();
+      if (state.scanLoading) {
+        state.scanStatus = "Connection lost — scan may still be processing";
+        state.scanLoading = false;
+      }
+    };
+  } catch (e: any) {
+    state.scanStatus = `Scan error: ${e.message}`;
+  } finally {
+    state.scanLoading = false;
   }
 }
 
@@ -1110,6 +1185,10 @@ createApp({
                 onClick: () => { state.mode = "query-assist"; },
               }, "🔎 Query Assist"),
               h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "scan" ? "active" : ""}`,
+                onClick: () => { state.mode = "scan"; },
+              }, "📷 Scan"),
+              h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "documents" ? "active" : ""}`,
                 onClick: () => { state.mode = "documents"; },
               }, `📄 Documents (${state.documents.length})`),
@@ -1257,6 +1336,24 @@ createApp({
                                   found.push({ document_id: fd.document_id, title: fd.title || fd.original_filename, score: 0, snippet: "(auto-included: form document)" });
                                 }
                               }
+                              // Auto-include documents by type when prompt mentions them
+                              const typeKeywords: Record<string, string[]> = {
+                                "deed": ["deed", "conveyance", "title transfer"],
+                                "estate_plan": ["estate plan", "will", "trust", "estate document"],
+                                "proposal": ["proposal", "estimate", "quote", "bid"],
+                                "insurance_policy": ["insurance", "policy", "coverage"],
+                              };
+                              for (const [docType, keywords] of Object.entries(typeKeywords)) {
+                                if (keywords.some(k => promptLower.includes(k))) {
+                                  const typeDocs = state.documents.filter((d: any) =>
+                                    d.document_type === docType && !found.some((f: any) => f.document_id === d.document_id)
+                                  );
+                                  for (const td of typeDocs.slice(0, 3)) {
+                                    found.push({ document_id: td.document_id, title: td.title || td.original_filename, score: 0, snippet: `(auto-included: ${docType} document)` });
+                                  }
+                                  if (typeDocs.length > 0) state.taskLog.push(`auto-include: ${typeDocs.length} ${docType} doc(s)`);
+                                }
+                              }
                               state.taskLog.push(`result: ${found.length} documents ready for review`);
                               state.taskFoundDocs = found;
                               state.taskDocIds = found.map((d: any) => d.document_id);
@@ -1293,6 +1390,7 @@ createApp({
                                   h("span", { style: "font-weight:500" }, d.title),
                                   h("span", { style: "font-size:.65rem;color:#6b7280;white-space:nowrap;margin-left:8px" }, `${d.score.toFixed(1)}`),
                                 ]),
+                                (() => { const doc = state.documents.find((x: any) => x.document_id === d.document_id); return doc && doc.original_filename && doc.original_filename !== d.title ? h("div", { style: "font-size:.65rem;color:#6b7280;margin-top:1px" }, `📎 ${doc.original_filename}`) : null; })(),
                                 d.snippet
                                   ? h("div", { style: "font-size:.7rem;color:#9ca3af;margin-top:3px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" }, `"${d.snippet.slice(0, 200)}${d.snippet.length > 200 ? "..." : ""}"`)
                                   : null,
@@ -2144,7 +2242,7 @@ createApp({
                         .map(([key, val]: [string, string]) => {
                         const isSecret = key.includes("SECRET") || key.includes("API_TOKEN");
                         const isReadOnly = key === "WORKER_CONCURRENCY" || key === "MAX_WORKER_CONCURRENCY" || key === "OPENSEARCH_HOST" || key === "OPENSEARCH_PORT";
-                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID" || key === "BEDROCK_EMBED_MODEL_ID" || key === "BEDROCK_QUERY_ASSIST_MODEL" || key === "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL";
+                        const isModelSelect = key === "BEDROCK_MODEL_ID" || key === "BEDROCK_GENERATE_MODEL_ID" || key === "BEDROCK_TASK_MODEL_ID" || key === "BEDROCK_TASK_SINGLE_MODEL_ID" || key === "BEDROCK_TASK_MULTI_MODEL_ID" || key === "BEDROCK_DETECT_MODEL_ID" || key === "BEDROCK_TEMPLATE_MODEL_ID" || key === "BEDROCK_CLASSIFY_MODEL_ID" || key === "BEDROCK_SCAN_SPLIT_MODEL_ID" || key === "BEDROCK_SCAN_VALIDATE_MODEL_ID" || key === "BEDROCK_VISION_MODEL_ID" || key === "BEDROCK_EMBED_MODEL_ID" || key === "BEDROCK_QUERY_ASSIST_MODEL" || key === "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL";
                         const isRegionSelect = key === "AWS_REGION";
                         const models = key === "BEDROCK_VISION_MODEL_ID" ? state.visionModels : key === "BEDROCK_EMBED_MODEL_ID" ? state.embeddingModels : state.qaModels;
                         // For task model selectors, add context window hints to help user choose
@@ -2184,6 +2282,9 @@ createApp({
                             "BEDROCK_TASK_MULTI_MODEL_ID": "Task Model — Structured Pipeline (complex tasks)",
                             "BEDROCK_DETECT_MODEL_ID": "Format Detection Model (fast/cheap, returns 1 word)",
                             "BEDROCK_TEMPLATE_MODEL_ID": "Template Extraction Model (needs strong JSON)",
+                            "BEDROCK_CLASSIFY_MODEL_ID": "Classify Model (document type & category detection)",
+                            "BEDROCK_SCAN_SPLIT_MODEL_ID": "Scan Split Model (PDF boundary detection)",
+                            "BEDROCK_SCAN_VALIDATE_MODEL_ID": "Scan Validate Model (split quality review)",
                             "BEDROCK_QUERY_ASSIST_MODEL": "Query Assist — Answer Extraction Model",
                             "BEDROCK_QUERY_ASSIST_CATEGORY_MODEL": "Query Assist — Category Generation Model",
                             "BEDROCK_VISION_MODEL_ID": "Vision OCR Model (must support images)",
@@ -2357,7 +2458,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" && state.mode !== "query-assist" ? h("div", {}, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" && state.mode !== "query-assist" && state.mode !== "scan" ? h("div", {}, [
               h("div", { style: "font-size:.72rem;color:#9ca3af;margin-bottom:6px" },
                 state.mode === "search"
                   ? "Find specific passages in your documents by keyword or phrase. Fast, direct results."
@@ -2436,8 +2537,8 @@ createApp({
               ])
             : null,
 
-          // Upload card (files or folders - accumulates selections)
-          h("div", { class: "card" }, [
+          // Upload card (files or folders - accumulates selections) — only on Documents tab
+          state.mode === "documents" ? h("div", { class: "card" }, [
             h("h2", "Upload Documents"),
             h("div", { class: "upload-row" }, [
               h("label", { class: "btn btn-sm btn-outline upload-btn" }, [
@@ -2542,7 +2643,39 @@ createApp({
                   style: "margin-top:8px",
                 }, state.uploadStatus)
               : null,
-          ]),
+          ]) : null,
+
+          // Scan panel
+          state.mode === "scan" ? h("div", { class: "create-panel" }, [
+            h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 12px" }, "Scan & Classify Documents"),
+            h("p", { style: "color:#9ca3af;font-size:.8rem;margin:0 0 12px" }, "Select a folder of unsorted scanned documents. Each file will be OCR'd, classified by type, and indexed for search."),
+            h("div", { style: "display:flex;gap:8px;align-items:center;margin-bottom:12px" }, [
+              h("input", {
+                type: "file",
+                multiple: true,
+                webkitdirectory: true,
+                onChange: (e: any) => { state.scanFiles = Array.from(e.target.files || []); },
+                style: "font-size:.8rem",
+              }),
+              state.scanFiles.length > 0 ? h("span", { style: "font-size:.8rem;color:#6b7280" }, `${state.scanFiles.length} files selected`) : null,
+            ]),
+            h("div", { style: "display:flex;gap:8px;align-items:center;margin-bottom:12px" }, [
+              h("button", {
+                class: "btn btn-sm btn-primary",
+                disabled: state.scanLoading || state.scanFiles.length === 0,
+                onClick: startScan,
+              }, state.scanLoading ? "Scanning..." : "🚀 Start Scan"),
+              state.scanStatus ? h("span", { style: "font-size:.8rem;color:#9ca3af" }, state.scanStatus) : null,
+            ]),
+            state.scanLog.length > 0 ? h("div", { class: "scan-log", style: "max-height:400px;overflow-y:auto;font-size:.75rem;border:1px solid #374151;border-radius:6px;padding:8px" },
+              state.scanLog.map((entry: any) => h("div", {
+                style: `display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #1f2937;${entry.status === "error" ? "color:#ef4444" : entry.status === "warning" ? "color:#f59e0b" : entry.step === "complete" ? "color:#10b981" : "color:#d1d5db"}`,
+              }, [
+                h("span", { style: "min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, entry.file),
+                h("span", null, entry.detail),
+              ]))
+            ) : null,
+          ]) : null,
 
           // Documents list - only on Documents tab
           state.mode === "documents" ? h("div", { class: "card" }, [
