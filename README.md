@@ -89,6 +89,25 @@ When you are ready to move to Confluence Cloud, the connector is built and ready
 4. Add your site URL, email, and token to Settings > Configuration
 5. Sync: `curl -X POST http://localhost:8000/sources/confluence/sync -H 'Content-Type: application/json' -d '{"space_keys":["YOUR_SPACE"]}'`
 
+### Syncing to S3
+
+The app can push all indexed documents to an S3 bucket for organized cloud backup. Documents are categorized into prefixes like `Organized/Closing_and_Mortgage/2026-04/`, `Organized/Home_Maintenance/Inspections/2026-03/`, etc.
+
+1. Set the `S3_SYNC_BUCKET` environment variable to your bucket name (or enter it in the UI)
+2. Click the "☁️ S3 Sync" tab in the app
+3. Review the status panel showing what's in the bucket vs what's indexed locally
+4. Click "Sync Now" to push new documents
+
+Or via API: `curl -X POST http://localhost:8000/sources/s3/sync`
+
+**Behavior:**
+- Upload-only — nothing in the bucket is deleted or overwritten
+- Duplicates are skipped by MD5 content hash (matches S3 ETag)
+- Documents are auto-organized into prefixes by type (Closing_and_Mortgage, HOA_Governance, Home_Maintenance/Roofing_and_Repairs, Insurance, Loan_Documents, etc.)
+- Each file is placed in a date-based subfolder (e.g., `2026-04/`) derived from the document date
+
+**Status endpoint:** `GET /sources/s3/status` returns the bucket inventory, category breakdown, and how many local docs need syncing.
+
 ### Supported File Types
 
 - PDF (.pdf) including scanned documents
@@ -358,6 +377,8 @@ Key endpoints:
 - `DELETE /templates/{id}` - Delete a template
 - `POST /sources/bookstack/sync` - Sync from BookStack
 - `POST /sources/confluence/sync` - Sync from Confluence Cloud
+- `POST /sources/s3/sync` - Sync indexed documents to S3 bucket
+- `GET /sources/s3/status` - S3 bucket inventory and sync status
 - `GET /admin/health-check` - Service health with versions
 - `GET /admin/config` - Current configuration
 - `PUT /admin/config` - Update configuration at runtime

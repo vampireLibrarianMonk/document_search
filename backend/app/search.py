@@ -56,7 +56,7 @@ def _get_bedrock_runtime():
         _bedrock_runtime = boto3.client(
             "bedrock-runtime",
             region_name=os.getenv("AWS_REGION", "us-east-1"),
-            config=BotoConfig(read_timeout=30, connect_timeout=5),
+            config=BotoConfig(read_timeout=120, connect_timeout=10, retries={"max_attempts": 3}),
         )
     return _bedrock_runtime
 
@@ -108,7 +108,7 @@ def index_chunks(document_id: str, title: str, chunks: list[dict]):
         return
 
     actions = []
-    for c in chunks:
+    for i, c in enumerate(chunks):
         source = {
             "chunk_id": c["chunk_id"],
             "document_id": document_id,
@@ -124,6 +124,10 @@ def index_chunks(document_id: str, title: str, chunks: list[dict]):
         except Exception as e:
             logger.warning("Embedding failed for chunk %s, indexing without vector: %s", c["chunk_id"], e)
         actions.append({"_index": INDEX_NAME, "_id": c["chunk_id"], "_source": source})
+        # Rate limit: avoid throttling on embedding API
+        if i > 0 and i % 5 == 0:
+            import time
+            time.sleep(0.1)
 
     helpers.bulk(client, actions)
     logger.info("Indexed %d chunks (with embeddings) for %s", len(actions), document_id)

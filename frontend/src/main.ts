@@ -65,7 +65,7 @@ const state = reactive({
 
   // Search / Ask / Settings mode
   query: "",
-  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "query-assist" | "documents" | "scan" | "settings",
+  mode: "search" as "search" | "ask" | "create" | "tasks" | "templates" | "diagnostic" | "gap-email" | "query-assist" | "documents" | "scan" | "s3-sync" | "settings",
 
   // Scan
   scanFiles: [] as File[],
@@ -77,6 +77,13 @@ const state = reactive({
     status: string;
     detail: string;
   }>,
+
+  // S3 Sync
+  s3SyncLoading: false,
+  s3SyncStatus: null as null | { configured: boolean; bucket: string; s3_object_count?: number; s3_categories?: Record<string, number>; indexed_documents?: number; needs_sync?: number; error?: string; message?: string },
+  s3SyncResult: null as null | { uploaded: number; skipped: number; errors: number; total_in_index: number; details?: any },
+  s3SyncBucket: "",
+
   searchLoading: false,
   searchError: "",
   searchTime: null as number | null,
@@ -187,6 +194,42 @@ async function loadDocuments() {
     state.documents = await (await fetch(`${apiBase}/documents`)).json();
   } catch {
     // Backend might not be running yet
+  }
+}
+
+async function loadS3Status() {
+  try {
+    const res = await fetch(`${apiBase}/sources/s3/status`);
+    if (res.ok) {
+      state.s3SyncStatus = await res.json();
+    }
+  } catch {
+    state.s3SyncStatus = { configured: false, bucket: "", message: "Could not reach API" };
+  }
+}
+
+async function startS3Sync() {
+  state.s3SyncLoading = true;
+  state.s3SyncResult = null;
+  try {
+    const body: any = {};
+    if (state.s3SyncBucket) body.bucket = state.s3SyncBucket;
+    const res = await fetch(`${apiBase}/sources/s3/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      state.s3SyncResult = { uploaded: 0, skipped: 0, errors: 1, total_in_index: 0, details: { errors: [{ reason: await res.text() }] } };
+      return;
+    }
+    state.s3SyncResult = await res.json();
+    // Refresh status after sync
+    await loadS3Status();
+  } catch (e: any) {
+    state.s3SyncResult = { uploaded: 0, skipped: 0, errors: 1, total_in_index: 0, details: { errors: [{ reason: e.message }] } };
+  } finally {
+    state.s3SyncLoading = false;
   }
 }
 
@@ -947,7 +990,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .btn-sm{padding:6px 12px;font-size:.78rem;border-radius:6px}
 .btn-outline{background:transparent;border:1.5px solid #e5e7eb;color:#6b7280}
 .btn-outline.active{border-color:#6366f1;color:#6366f1;background:#eef2ff}
-.toggle-row{display:flex;gap:6px;margin-bottom:12px}
+.toggle-row{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:#374151 transparent;-webkit-overflow-scrolling:touch}
+.toggle-row::-webkit-scrollbar{height:4px}
+.toggle-row::-webkit-scrollbar-track{background:transparent}
+.toggle-row::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+.toggle-row .btn{white-space:nowrap;flex-shrink:0}
 .upload-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .upload-row input[type=file]{font-size:.85rem}
 .upload-btn{cursor:pointer;display:inline-flex;align-items:center;gap:4px}
@@ -1188,6 +1235,10 @@ createApp({
                 class: `btn btn-sm btn-outline ${state.mode === "scan" ? "active" : ""}`,
                 onClick: () => { state.mode = "scan"; },
               }, "📷 Scan"),
+              h("button", {
+                class: `btn btn-sm btn-outline ${state.mode === "s3-sync" ? "active" : ""}`,
+                onClick: () => { state.mode = "s3-sync"; loadS3Status(); },
+              }, "☁️ S3 Sync"),
               h("button", {
                 class: `btn btn-sm btn-outline ${state.mode === "documents" ? "active" : ""}`,
                 onClick: () => { state.mode = "documents"; },
@@ -2108,14 +2159,54 @@ createApp({
                             ),
                             // Reindex button if search index is out of sync
                             state.healthChecks && state.healthChecks.search_index && state.healthChecks.search_index.status !== "ok"
-                              ? h("button", {
-                                  class: "btn btn-sm btn-primary",
-                                  style: "margin-top:8px",
-                                  onClick: async () => {
-                                    const resp = await fetch(`${apiBase}/admin/reindex`, { method: "POST" });
-                                    if (resp.ok) { await loadHealthCheck(); }
-                                  },
-                                }, "Reindex Now")
+                              ? h("div", { style: "margin-top:8px" }, [
+                                  h("button", {
+                                    class: "btn btn-sm btn-primary",
+                                    disabled: (state as any).reindexing,
+                                    onClick: async () => {
+                                      (state as any).reindexing = true;
+                                      (state as any).reindexStatus = "Starting...";
+                                      (state as any).reindexLog = [];
+                                      try {
+                                        const resp = await fetch(`${apiBase}/admin/reindex`, { method: "POST" });
+                                        const reader = resp.body!.getReader();
+                                        const decoder = new TextDecoder();
+                                        let buffer = "";
+                                        while (true) {
+                                          const { done, value } = await reader.read();
+                                          if (done) break;
+                                          buffer += decoder.decode(value, { stream: true });
+                                          const lines = buffer.split("\n");
+                                          buffer = lines.pop() || "";
+                                          for (const line of lines) {
+                                            if (line.startsWith("data: ")) {
+                                              try {
+                                                const data = JSON.parse(line.slice(6));
+                                                if (data.status) {
+                                                  (state as any).reindexStatus = data.status;
+                                                  (state as any).reindexLog.push(data.status);
+                                                }
+                                                if (data.done) { await loadHealthCheck(); }
+                                              } catch {}
+                                            }
+                                          }
+                                        }
+                                      } catch (e: any) {
+                                        (state as any).reindexStatus = `Error: ${e.message}`;
+                                      }
+                                      (state as any).reindexing = false;
+                                    },
+                                  }, (state as any).reindexing ? "Reindexing..." : "Reindex Now"),
+                                  (state as any).reindexStatus ? h("div", { style: "margin-top:6px;font-size:.75rem;color:#6366f1;display:flex;align-items:center;gap:6px" }, [
+                                    (state as any).reindexing ? h("span", { class: "spinner spinner-dark" }) : null,
+                                    h("span", null, (state as any).reindexStatus),
+                                  ]) : null,
+                                  (state as any).reindexLog && (state as any).reindexLog.length > 1
+                                    ? h("div", { style: "max-height:120px;overflow-y:auto;background:#111827;border-radius:4px;padding:4px 6px;margin-top:4px;font-family:monospace;font-size:.65rem;line-height:1.4" },
+                                        (state as any).reindexLog.map((entry: string) => h("div", { style: "color:#a3e635" }, `$ ${entry}`))
+                                      )
+                                    : null,
+                                ])
                               : null,
                           ])
                         : null,
@@ -2458,7 +2549,7 @@ createApp({
               : null,
 
             // Search/Ask input (hidden in settings mode)
-            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" && state.mode !== "query-assist" && state.mode !== "scan" ? h("div", {}, [
+            state.mode !== "settings" && state.mode !== "create" && state.mode !== "tasks" && state.mode !== "templates" && state.mode !== "diagnostic" && state.mode !== "gap-email" && state.mode !== "query-assist" && state.mode !== "scan" && state.mode !== "s3-sync" ? h("div", {}, [
               h("div", { style: "font-size:.72rem;color:#9ca3af;margin-bottom:6px" },
                 state.mode === "search"
                   ? "Find specific passages in your documents by keyword or phrase. Fast, direct results."
@@ -2675,6 +2766,96 @@ createApp({
                 h("span", null, entry.detail),
               ]))
             ) : null,
+          ]) : null,
+
+          // S3 Sync panel
+          state.mode === "s3-sync" ? h("div", { class: "create-panel" }, [
+            h("h2", { style: "font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 12px" }, "☁️ Sync to S3"),
+            h("p", { style: "color:#9ca3af;font-size:.8rem;margin:0 0 12px" }, "Push all indexed documents to your S3 bucket. Upload-only — nothing in the bucket is deleted or overwritten. Duplicates are skipped by content hash."),
+
+            // Bucket override input
+            h("div", { style: "display:flex;gap:8px;align-items:center;margin-bottom:12px" }, [
+              h("label", { style: "font-size:.8rem;color:#9ca3af;white-space:nowrap" }, "Bucket:"),
+              h("input", {
+                type: "text",
+                value: state.s3SyncBucket || (state.s3SyncStatus?.bucket || ""),
+                placeholder: "S3_SYNC_BUCKET env var or enter bucket name",
+                onInput: (e: any) => { state.s3SyncBucket = e.target.value; },
+                style: "flex:1;font-size:.8rem;padding:4px 8px;background:#1f2937;border:1px solid #374151;border-radius:4px;color:#e5e7eb",
+              }),
+            ]),
+
+            // Status card
+            state.s3SyncStatus ? h("div", { style: "background:#1f2937;border:1px solid #374151;border-radius:6px;padding:12px;margin-bottom:12px;font-size:.8rem" }, [
+              !state.s3SyncStatus.configured
+                ? h("div", { style: "color:#f59e0b" }, `⚠️ ${state.s3SyncStatus.message || "Not configured"}`)
+                : state.s3SyncStatus.error
+                  ? h("div", { style: "color:#ef4444" }, `❌ ${state.s3SyncStatus.error}`)
+                  : h("div", {}, [
+                      h("div", { style: "display:flex;gap:16px;margin-bottom:8px" }, [
+                        h("span", { style: "color:#10b981" }, `✓ Connected: ${state.s3SyncStatus.bucket}`),
+                      ]),
+                      h("div", { style: "display:flex;gap:24px;margin-bottom:8px;color:#d1d5db" }, [
+                        h("span", {}, `📦 S3 objects: ${state.s3SyncStatus.s3_object_count || 0}`),
+                        h("span", {}, `📄 Indexed: ${state.s3SyncStatus.indexed_documents || 0}`),
+                        h("span", { style: (state.s3SyncStatus.needs_sync || 0) > 0 ? "color:#f59e0b;font-weight:600" : "color:#10b981" },
+                          `🔄 Needs sync: ${state.s3SyncStatus.needs_sync || 0}`),
+                      ]),
+                      state.s3SyncStatus.s3_categories ? h("div", { style: "margin-top:8px" }, [
+                        h("div", { style: "color:#9ca3af;margin-bottom:4px" }, "S3 Categories:"),
+                        ...Object.entries(state.s3SyncStatus.s3_categories).sort(([a], [b]) => a.localeCompare(b)).map(([cat, count]) =>
+                          h("div", { style: "display:flex;justify-content:space-between;padding:2px 0;color:#d1d5db" }, [
+                            h("span", {}, cat),
+                            h("span", { style: "color:#9ca3af" }, `${count}`),
+                          ])
+                        ),
+                      ]) : null,
+                    ]),
+            ]) : null,
+
+            // Action buttons
+            h("div", { style: "display:flex;gap:8px;align-items:center;margin-bottom:12px" }, [
+              h("button", {
+                class: "btn btn-sm btn-primary",
+                disabled: state.s3SyncLoading,
+                onClick: startS3Sync,
+              }, state.s3SyncLoading ? "⏳ Syncing..." : "🚀 Sync Now"),
+              h("button", {
+                class: "btn btn-sm btn-outline",
+                disabled: state.s3SyncLoading,
+                onClick: loadS3Status,
+              }, "🔄 Refresh Status"),
+            ]),
+
+            // Results
+            state.s3SyncResult ? h("div", { style: "background:#1f2937;border:1px solid #374151;border-radius:6px;padding:12px;font-size:.8rem" }, [
+              h("div", { style: "display:flex;gap:16px;margin-bottom:8px" }, [
+                h("span", { style: "color:#10b981" }, `✅ Uploaded: ${state.s3SyncResult.uploaded}`),
+                h("span", { style: "color:#9ca3af" }, `⏭ Skipped: ${state.s3SyncResult.skipped}`),
+                state.s3SyncResult.errors > 0
+                  ? h("span", { style: "color:#ef4444" }, `❌ Errors: ${state.s3SyncResult.errors}`)
+                  : null,
+              ]),
+              state.s3SyncResult.uploaded > 0 && state.s3SyncResult.details?.uploaded ? h("details", { style: "margin-top:8px" }, [
+                h("summary", { style: "cursor:pointer;color:#6366f1" }, `View ${state.s3SyncResult.uploaded} uploaded files`),
+                h("div", { style: "max-height:200px;overflow-y:auto;margin-top:4px" },
+                  state.s3SyncResult.details.uploaded.map((item: any) =>
+                    h("div", { style: "padding:2px 0;border-bottom:1px solid #374151;color:#d1d5db" }, [
+                      h("span", {}, item.title),
+                      h("div", { style: "font-size:.7rem;color:#6b7280" }, item.s3_key),
+                    ])
+                  )
+                ),
+              ]) : null,
+              state.s3SyncResult.errors > 0 && state.s3SyncResult.details?.errors ? h("details", { style: "margin-top:8px" }, [
+                h("summary", { style: "cursor:pointer;color:#ef4444" }, `View ${state.s3SyncResult.errors} errors`),
+                h("div", { style: "max-height:150px;overflow-y:auto;margin-top:4px" },
+                  state.s3SyncResult.details.errors.map((item: any) =>
+                    h("div", { style: "padding:2px 0;color:#ef4444" }, `${item.title || ""}: ${item.reason}`)
+                  )
+                ),
+              ]) : null,
+            ]) : null,
           ]) : null,
 
           // Documents list - only on Documents tab

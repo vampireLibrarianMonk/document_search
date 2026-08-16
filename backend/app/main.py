@@ -649,6 +649,199 @@ async def bookstack_sync() -> BulkUploadResponse:
     return BulkUploadResponse(uploaded=uploaded, errors=errors)
 
 
+# -- S3 Sync --
+
+
+class S3SyncResponse:
+    pass  # using dict return
+
+
+@app.post("/sources/s3/sync")
+async def s3_sync(body: dict = {}):
+    """Sync all indexed documents to the configured S3 bucket (upload only, no deletes)."""
+    import hashlib
+    import re
+
+    import boto3
+    from botocore.config import Config as BotoConfig
+
+    bucket = os.getenv("S3_SYNC_BUCKET", body.get("bucket", ""))
+    region = os.getenv("AWS_REGION", "us-east-1")
+
+    if not bucket:
+        raise HTTPException(status_code=400, detail="No S3 bucket configured. Set S3_SYNC_BUCKET env var or pass 'bucket' in request body.")
+
+    s3 = boto3.client("s3", region_name=region, config=BotoConfig(connect_timeout=10, read_timeout=30))
+
+    # Category mapping from app categories to S3 prefixes
+    CATEGORY_MAP = {
+        "Home Maintenance": "Home_Maintenance",
+        "Tax & Legal": "Real_Estate_and_Legal",
+        "Insurance": "Insurance",
+        "Account Statements": "Financial_and_Tax",
+        "Uncategorized": "Uncategorized",
+    }
+
+    DOC_TYPE_OVERRIDES = {
+        "closing_disclosure": "Closing_and_Mortgage",
+        "settlement_statement": "Closing_and_Mortgage",
+        "closing_instructions": "Closing_and_Mortgage",
+        "closing_binder": "Closing_and_Mortgage",
+        "loan_application": "Loan_Documents",
+        "loan_note": "Loan_Documents",
+        "deed": "Deeds_and_Title",
+        "deed_of_trust": "Deeds_and_Title",
+        "appraisal": "Appraisals",
+        "appraisal_report": "Appraisals",
+        "bylaws": "HOA_Governance",
+        "covenant": "HOA_Governance",
+        "meeting_minutes": "HOA_Governance",
+        "proposal": "Home_Maintenance/Roofing_and_Repairs",
+        "estimate": "Home_Maintenance/Estimates",
+        "invoice": "Home_Maintenance/Invoices",
+        "inspection_report": "Home_Maintenance/Inspections",
+        "insurance_policy": "Insurance",
+        "estate_plan": "Estate_Planning",
+        "trust_declaration": "Estate_Planning",
+    }
+
+    def sanitize(title: str) -> str:
+        name = re.sub(r'[^a-zA-Z0-9\s\-]', '', title.strip())
+        name = re.sub(r'\s+', '_', name)
+        return name[:80]
+
+    def get_date_prefix(date_str: str | None) -> str:
+        if not date_str:
+            return "undated"
+        m = re.match(r'(\d{4})-(\d{2})', date_str)
+        return f"{m.group(1)}-{m.group(2)}" if m else "undated"
+
+    # Get existing S3 ETags for dedup
+    existing_etags: set[str] = set()
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket):
+            for obj in page.get("Contents", []):
+                existing_etags.add(obj["ETag"].strip('"'))
+    except Exception as e:
+        _logger.warning("Could not list existing S3 objects: %s", e)
+
+    # Process all documents
+    documents = store.list_documents()
+    uploaded = []
+    skipped = []
+    errors = []
+
+    uploads_dir = Path(os.getenv("UPLOADS_DIR", "data/uploads"))
+
+    for doc in documents:
+        doc_id = doc.document_id
+        title = doc.title
+        category = doc.category or "Uncategorized"
+        doc_type = doc.document_type or "general"
+        doc_date = doc.document_date
+        orig_filename = doc.original_filename or ""
+
+        # Find local file
+        candidates = list(uploads_dir.glob(f"{doc_id}_*"))
+        if not candidates:
+            candidates = list(uploads_dir.glob(f"{doc_id}*"))
+        if not candidates:
+            errors.append({"doc_id": doc_id, "title": title, "reason": "file not found"})
+            continue
+
+        local_path = candidates[0]
+
+        # Check MD5 for dedup
+        md5 = hashlib.md5(local_path.read_bytes()).hexdigest()
+        if md5 in existing_etags:
+            skipped.append({"doc_id": doc_id, "title": title, "reason": "already exists"})
+            continue
+
+        # Determine S3 key
+        s3_category = DOC_TYPE_OVERRIDES.get(doc_type, CATEGORY_MAP.get(category, category.replace(" ", "_")))
+        date_prefix = get_date_prefix(doc_date)
+        ext = local_path.suffix or ".pdf"
+        filename = f"{sanitize(title)}{ext}"
+        s3_key = f"Organized/{s3_category}/{date_prefix}/{filename}"
+
+        # Upload
+        try:
+            content_type = "application/pdf" if ext.lower() == ".pdf" else "text/plain"
+            s3.put_object(Bucket=bucket, Key=s3_key, Body=local_path.read_bytes(), ContentType=content_type)
+            uploaded.append({"doc_id": doc_id, "title": title, "s3_key": s3_key})
+        except Exception as e:
+            errors.append({"doc_id": doc_id, "title": title, "reason": str(e)})
+
+    return {
+        "uploaded": len(uploaded),
+        "skipped": len(skipped),
+        "errors": len(errors),
+        "total_in_index": len(documents),
+        "details": {
+            "uploaded": uploaded,
+            "skipped": skipped,
+            "errors": errors,
+        },
+    }
+
+
+@app.get("/sources/s3/status")
+def s3_status():
+    """Get current S3 sync status — what's in the bucket vs what's indexed."""
+    import hashlib
+
+    import boto3
+    from botocore.config import Config as BotoConfig
+
+    bucket = os.getenv("S3_SYNC_BUCKET", "")
+    region = os.getenv("AWS_REGION", "us-east-1")
+
+    if not bucket:
+        return {"configured": False, "bucket": "", "message": "S3_SYNC_BUCKET not set"}
+
+    s3 = boto3.client("s3", region_name=region, config=BotoConfig(connect_timeout=10, read_timeout=30))
+
+    # Count S3 objects by prefix
+    s3_categories: dict[str, int] = {}
+    s3_etags: set[str] = set()
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                s3_etags.add(obj["ETag"].strip('"'))
+                parts = key.split("/")
+                if len(parts) >= 2:
+                    cat = parts[1] if parts[0] == "Organized" else parts[0]
+                    s3_categories[cat] = s3_categories.get(cat, 0) + 1
+    except Exception as e:
+        return {"configured": True, "bucket": bucket, "error": str(e)}
+
+    # Check how many local docs need syncing
+    documents = store.list_documents()
+    uploads_dir = Path(os.getenv("UPLOADS_DIR", "data/uploads"))
+    needs_sync = 0
+    for doc in documents:
+        candidates = list(uploads_dir.glob(f"{doc.document_id}_*"))
+        if not candidates:
+            candidates = list(uploads_dir.glob(f"{doc.document_id}*"))
+        if not candidates:
+            continue
+        md5 = hashlib.md5(candidates[0].read_bytes()).hexdigest()
+        if md5 not in s3_etags:
+            needs_sync += 1
+
+    return {
+        "configured": True,
+        "bucket": bucket,
+        "s3_object_count": sum(s3_categories.values()),
+        "s3_categories": s3_categories,
+        "indexed_documents": len(documents),
+        "needs_sync": needs_sync,
+    }
+
+
 # -- Document Generation --
 
 
@@ -2081,33 +2274,52 @@ def admin_jobs() -> list[JobResponse]:
 
 
 @app.post("/admin/reindex")
-def admin_reindex():
-    """Rebuild the OpenSearch index from Postgres (recreates index for mapping changes)."""
-    client = os_search.get_client()
-    if client.indices.exists(index=os_search.INDEX_NAME):
-        client.indices.delete(index=os_search.INDEX_NAME)
-    os_search.ensure_index()
-    docs = store.list_documents()
-    indexed = 0
-    for doc in docs:
-        chunks = store.get_chunks(doc.document_id)
-        if chunks:
-            os_search.index_chunks(
-                doc.document_id,
-                doc.title,
-                [
-                    {
-                        "chunk_id": c.chunk_id,
-                        "content": c.content,
-                        "source_type": c.source_type,
-                        "document_type": c.document_type,
-                        "tags": c.tags,
-                    }
-                    for c in chunks
-                ],
-            )
-            indexed += 1
-    return {"status": "completed", "indexed": indexed, "total": len(docs)}
+async def admin_reindex():
+    """Rebuild the OpenSearch index from Postgres with streaming progress."""
+    from starlette.responses import StreamingResponse
+    import json as _json
+    import asyncio
+
+    async def reindex_stream():
+        client = os_search.get_client()
+        if client.indices.exists(index=os_search.INDEX_NAME):
+            client.indices.delete(index=os_search.INDEX_NAME)
+        os_search.ensure_index()
+        yield f"data: {_json.dumps({'status': 'Index recreated, starting reindex...'})}\n\n"
+
+        docs = store.list_documents()
+        total = len(docs)
+        indexed = 0
+        errors = 0
+        loop = asyncio.get_event_loop()
+        for i, doc in enumerate(docs, 1):
+            chunks = store.get_chunks(doc.document_id)
+            if chunks:
+                title_short = (doc.title or doc.original_filename or doc.document_id)[:50]
+                yield f"data: {_json.dumps({'status': f'Indexing {i}/{total}: {title_short} ({len(chunks)} chunks)...', 'progress': i, 'total': total})}\n\n"
+                await asyncio.sleep(0)
+                try:
+                    chunk_data = [
+                        {
+                            "chunk_id": c.chunk_id,
+                            "content": c.content,
+                            "source_type": c.source_type,
+                            "document_type": c.document_type,
+                            "tags": c.tags,
+                        }
+                        for c in chunks
+                    ]
+                    # Run blocking index_chunks in thread pool to not block event loop
+                    await loop.run_in_executor(None, os_search.index_chunks, doc.document_id, doc.title, chunk_data)
+                    indexed += 1
+                except Exception as e:
+                    errors += 1
+                    yield f"data: {_json.dumps({'status': f'Error on {title_short}: {str(e)[:80]}', 'progress': i, 'total': total})}\n\n"
+                    await asyncio.sleep(0)
+
+        yield f"data: {_json.dumps({'status': f'Done: {indexed}/{total} documents indexed ({errors} errors)', 'progress': total, 'total': total, 'done': True})}\n\n"
+
+    return StreamingResponse(reindex_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/admin/usage")
